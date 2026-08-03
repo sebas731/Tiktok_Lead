@@ -1,0 +1,260 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Get a free hosted Postgres database in seconds: `npx create-db`
+
+generator client {
+  provider = "prisma-client"
+  output   = "../lib/generated/prisma"
+}
+
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ============================================================
+// ALLOWED IPS
+// ============================================================
+
+enum IPType {
+  COMPANY
+  PERSONAL
+}
+
+model AllowedIP {
+  id          String   @id @default(uuid())
+  ip          String
+  description String?
+  type        IPType   @default(PERSONAL)
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+
+  user   User?   @relation(fields: [userId], references: [user_id])
+  userId String?
+
+  @@unique([ip, userId]) // misma IP puede estar para varios usuarios
+}
+
+// ============================================================
+// ROL
+// ============================================================
+
+model ROL {
+  id_rol      String   @id @default(uuid())
+  name        String   @unique
+  description String
+  create_at   DateTime @default(now())
+  users       User[]
+}
+
+// ============================================================
+// DOCUMENT TYPE
+// ============================================================
+
+enum DocumentType {
+  DNI
+  CE
+  PASSAPORTE
+  RUC
+}
+
+// ============================================================
+// AUTH
+// ============================================================
+
+model User {
+  user_id          String       @id @default(uuid())
+  login            String       @unique
+  password         String
+  email            String       @unique
+  name             String
+  first_last_name  String
+  second_last_name String
+  department       String       @default("LIMA")
+  document_type    DocumentType @default(DNI)
+  document_number  String       @unique
+  status           Boolean      @default(true)
+  create_at        DateTime     @default(now())
+  //FK
+  rol              ROL          @relation(fields: [idRol], references: [id_rol])
+  idRol            String
+  ip_allowed       AllowedIP[]
+
+  // asignaciones (campañas y leads)
+  campaignAssignments    CampaignAssignment[]
+  leadsAsignados         Lead[]               @relation("LeadAsesor")
+  asignacionesComoAsesor LeadAssignment[]     @relation("AsignacionAsesor")
+  asignacionesRealizadas LeadAssignment[]     @relation("AsignacionPor")
+  ventasEditadas         LeadSaleDetail[]     @relation("EditadoPorBack")
+}
+
+// ============================================================
+// K31S
+// ============================================================
+model Key {
+  id           String    @id @default(uuid())
+  name         String
+  accessToken  String
+  advertiserId String
+  expiresAt    DateTime?
+  status       Boolean   @default(true)
+
+  campaigns Campaign[]
+}
+
+// ============================================================
+// CAMPAIGN
+// ============================================================
+
+model Campaign {
+  campaign_id String @id @default(uuid())
+  
+  data_mode Boolean @default(true)
+  //por si el modo es false
+  link_Excel String 
+
+  // datos de la API de tiktok
+  tiktokCampaignId   String @unique
+  tiktokAdvertiserId String
+
+  //datos de la campaña         
+  name         String
+  denomination String?
+  status       Boolean @default(true)
+
+  // metricas para el dhasboard
+  impressions Int   @default(0)
+  clicks      Int   @default(0)
+  spend       Float @default(0)
+  leads       Int   @default(0)
+
+  //datos para ejecutar la actualizacion de leads
+  lastSyncAt DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  // relations
+  key   Key    @relation(fields: [keyId], references: [id])
+  keyId String
+
+  lead Lead[]
+
+  // usuarios asignados (supervisores y back)
+  campaignAssignments CampaignAssignment[]
+}
+
+// ============================================================
+// LEAD Y TIPOS DEL ENUM
+// ============================================================
+
+enum LEAD_STATUS {
+  NEGATIVO
+  POSITIVO
+  AGENDADO
+  NO_CONTACTO
+  SIN_GESTION
+}
+
+enum LEAD_SUBSTATUS {
+  OTRO
+  //positivo
+  VENTA
+  //negativo
+  CLIENTE_NO_SOLICITO_INFORMACION
+  NO_TIENE_COBERTURA
+  //agendado
+  LO_PENSARA
+  LLAMAR_MAS_TARDE
+  //no contacto
+  CELULAR_APAGADO
+  NO_CONTESTA
+}
+
+model Lead {
+  id            String         @id @default(uuid())
+  name_client   String?
+  client_number String
+  status        LEAD_STATUS    @default(SIN_GESTION)
+  sub_status    LEAD_SUBSTATUS @default(OTRO)
+  observations  String?
+  reason        String
+
+  campaign   Campaign @relation(fields: [campaignId], references: [campaign_id])
+  campaignId String
+
+  // asesor asignado (estado actual)
+  asignadoA   User?   @relation("LeadAsesor", fields: [asignadoAId], references: [user_id])
+  asignadoAId String?
+
+  // historial de asignaciones y detalle de venta
+  assignments LeadAssignment[]
+  saleDetail  LeadSaleDetail?
+
+  @@index([status])
+  @@index([campaignId])
+  @@index([asignadoAId])
+}
+
+// ============================================================
+// CAMPAIGN ASSIGNMENT (m2m User <-> Campaign, supervisores y back)
+// ============================================================
+
+model CampaignAssignment {
+  id         String   @id @default(uuid())
+  campaign   Campaign @relation(fields: [campaignId], references: [campaign_id])
+  campaignId String
+  user       User     @relation(fields: [userId], references: [user_id])
+  userId     String
+  assignedAt DateTime @default(now())
+
+  @@unique([campaignId, userId])
+  @@index([userId])
+  @@index([campaignId])
+}
+
+// ============================================================
+// LEAD ASSIGNMENT (historial de asignaciones de leads a asesores)
+// ============================================================
+
+model LeadAssignment {
+  id            String   @id @default(uuid())
+  lead          Lead     @relation(fields: [leadId], references: [id])
+  leadId        String
+  asesor        User     @relation("AsignacionAsesor", fields: [asesorId], references: [user_id])
+  asesorId      String
+  asignadoPor   User     @relation("AsignacionPor", fields: [asignadoPorId], references: [user_id])
+  asignadoPorId String
+  createdAt     DateTime @default(now())
+
+  @@index([leadId])
+  @@index([asesorId])
+}
+
+// ============================================================
+// LEAD SALE DETAIL (detalle de venta: status POSITIVO + sub_status VENTA)
+// ============================================================
+
+model LeadSaleDetail {
+  id     String @id @default(uuid())
+  lead   Lead   @relation(fields: [leadId], references: [id])
+  leadId String @unique
+
+  agenteNombre     String
+  supervisorNombre String
+  canalVenta       String
+  titularNombre    String
+  contactoNombre   String
+  parentesco       String
+  nombrePadres     String?
+  tipoDocumento    DocumentType
+  numeroDocumento  String
+  numeroGrabacion  String?
+  numeroLlamadas   Int          @default(0)
+
+  editadoPorBack   User?   @relation("EditadoPorBack", fields: [editadoPorBackId], references: [user_id])
+  editadoPorBackId String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
