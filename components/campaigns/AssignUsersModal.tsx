@@ -38,7 +38,7 @@ export function AssignUsersModal({ open, onClose, campaignId }: Props) {
     setLoading(true)
     setError('')
     try {
-      await apiSend(`/api/campaigns/${campaignId}/assign`, 'POST', { userIds: [...selected] })
+      await apiSend(`/api/campaigns/${campaignId}/assign-users`, 'POST', { userIds: [...selected] })
       onClose()
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Error al asignar')

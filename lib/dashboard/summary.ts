@@ -2,8 +2,8 @@ import { prisma } from '@/lib/prisma'
 import { LEAD_STATUS } from '@/lib/generated/prisma/client'
 import {
   type AuthUser,
-  campaignWhereForUser,
-  leadWhereForUser,
+  getCampaignFilter,
+  getLeadFilter,
 } from '@/lib/auth/authorize'
 
 export type SummaryCard = { label: string; value: number }
@@ -25,11 +25,11 @@ export async function getSummary(user: AuthUser): Promise<SummaryCard[]> {
 
   if (user.role === 'SUPERVISOR') {
     const [campaigns, porGestionar] = await Promise.all([
-      prisma.campaign.count({ where: campaignWhereForUser(user) }),
+      prisma.campaign.count({ where: getCampaignFilter(user) }),
       prisma.lead.count({
         where: {
           AND: [
-            leadWhereForUser(user),
+            getLeadFilter(user),
             { status: { notIn: [LEAD_STATUS.POSITIVO, LEAD_STATUS.NEGATIVO] } },
           ],
         },
@@ -45,7 +45,7 @@ export async function getSummary(user: AuthUser): Promise<SummaryCard[]> {
     const pendientes = await prisma.lead.count({
       where: {
         AND: [
-          leadWhereForUser(user),
+          getLeadFilter(user),
           { status: { notIn: [LEAD_STATUS.POSITIVO, LEAD_STATUS.NEGATIVO] } },
         ],
       },
@@ -54,6 +54,6 @@ export async function getSummary(user: AuthUser): Promise<SummaryCard[]> {
   }
 
   // BACK: su leadWhere ya restringe a POSITIVO en sus campañas asignadas.
-  const ventas = await prisma.lead.count({ where: leadWhereForUser(user) })
+  const ventas = await prisma.lead.count({ where: getLeadFilter(user) })
   return [{ label: 'Ventas por revisar', value: ventas }]
 }

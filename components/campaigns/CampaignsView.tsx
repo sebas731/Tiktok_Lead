@@ -2,21 +2,23 @@
 
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Table, type Column } from '@/components/ui/Table'
 import { Button } from '@/components/ui/Button'
 import { Badge } from '@/components/ui/Badge'
-import { apiGet } from '@/lib/api/client'
+import { EmptyState } from '@/components/ui/EmptyState'
+import { PageHeader } from '@/components/layout/PageHeader'
+import { apiGet, apiSend } from '@/lib/api/client'
 import type { Campaign, Role } from '@/lib/types'
 import { CampaignFormModal } from './CampaignFormModal'
-import { AssignUsersModal } from './AssignUsersModal'
 
 export function CampaignsView({ role }: { role: Role }) {
   const router = useRouter()
   const isAdmin = role === 'ADMIN'
+  const isAsesor = role === 'ASESOR'
   const [campaigns, setCampaigns] = useState<Campaign[]>([])
   const [error, setError] = useState('')
+  const [notice, setNotice] = useState('')
+  const [syncing, setSyncing] = useState('')
   const [form, setForm] = useState<{ open: boolean; campaign?: Campaign | null }>({ open: false })
-  const [assignId, setAssignId] = useState<string | null>(null)
 
   function load() {
     apiGet<Campaign[]>('/api/campaigns')
@@ -25,50 +27,74 @@ export function CampaignsView({ role }: { role: Role }) {
   }
   useEffect(load, [])
 
-  const columns: Column<Campaign>[] = [
-    { key: 'name', header: 'Campaña', render: (c) => c.name },
-    { key: 'leads', header: 'Leads', render: (c) => c._count?.lead ?? 0 },
-    {
-      key: 'status',
-      header: 'Estado',
-      render: (c) => <Badge tone={c.status ? 'green' : 'gray'}>{c.status ? 'Activa' : 'Inactiva'}</Badge>,
-    },
-    {
-      key: 'actions',
-      header: '',
-      render: (c) =>
-        isAdmin ? (
-          <div className="flex gap-2" onClick={(e) => e.stopPropagation()}>
-            <Button variant="secondary" onClick={() => setForm({ open: true, campaign: c })}>Editar</Button>
-            <Button variant="secondary" onClick={() => setAssignId(c.campaign_id)}>Asignar</Button>
-          </div>
-        ) : null,
-    },
-  ]
+  async function toggleStatus(c: Campaign) {
+    await apiSend(`/api/campaigns/${c.campaign_id}`, 'PATCH', { status: !c.status })
+    load()
+  }
+  async function sync(c: Campaign) {
+    setSyncing(c.campaign_id)
+    setNotice('')
+    try {
+      const r = await apiSend<{ imported: number }>(`/api/campaigns/${c.campaign_id}/sync`, 'POST')
+      setNotice(`"${c.name}": ${r.imported} leads importados.`)
+      load()
+    } catch (e) {
+      setNotice(e instanceof Error ? e.message : 'Error al sincronizar')
+    } finally {
+      setSyncing('')
+    }
+  }
+
+  const stop = (e: React.MouseEvent) => e.stopPropagation()
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold text-gray-900">Campañas</h1>
-        {isAdmin && <Button onClick={() => setForm({ open: true, campaign: null })}>Nueva campaña</Button>}
-      </div>
-      {error && <p className="text-sm text-red-600">{error}</p>}
-      <Table
-        columns={columns}
-        rows={campaigns}
-        getRowKey={(c) => c.campaign_id}
-        onRowClick={(c) => router.push(`/dashboard/campaigns/${c.campaign_id}/leads`)}
-        emptyMessage="No hay campañas."
+    <div>
+      <PageHeader
+        title="Campañas"
+        description={isAsesor ? 'Entra a una campaña para gestionar tus leads.' : 'Haz clic en una campaña para ver sus leads.'}
+        actions={isAdmin ? <Button onClick={() => setForm({ open: true, campaign: null })}>Nueva campaña</Button> : undefined}
       />
-      <CampaignFormModal
-        open={form.open}
-        campaign={form.campaign}
-        onClose={() => setForm({ open: false })}
-        onSaved={load}
-      />
-      {assignId && (
-        <AssignUsersModal open onClose={() => setAssignId(null)} campaignId={assignId} />
+      {error && <p className="mb-4 text-sm text-red-600">{error}</p>}
+      {notice && <p className="mb-4 text-sm text-text-muted">{notice}</p>}
+
+      {campaigns.length === 0 ? (
+        <EmptyState title="Sin campañas" description="Aún no hay campañas disponibles." />
+      ) : (
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {campaigns.map((c) => (
+            <button
+              key={c.campaign_id}
+              type="button"
+              onClick={() => router.push(`/dashboard/campaigns/${c.campaign_id}/leads`)}
+              className="flex flex-col rounded-2xl border border-border bg-surface p-5 text-left shadow-sm transition hover:border-brand-red/40 hover:shadow-md"
+            >
+              <div className="mb-3 flex items-start justify-between gap-2">
+                <p className="font-semibold text-text">{c.name}</p>
+                <Badge tone={c.source === 'TIKTOK' ? 'agendado' : 'singestion'}>{c.source}</Badge>
+              </div>
+              <div className="mt-auto flex items-end justify-between">
+                <div>
+                  <p className="text-3xl font-semibold text-text">{c._count?.lead ?? 0}</p>
+                  <p className="text-xs text-text-muted">{isAsesor ? 'por atender' : 'leads'}</p>
+                </div>
+                <Badge tone={c.status ? 'positivo' : 'neutral'}>{c.status ? 'Activa' : 'Inactiva'}</Badge>
+              </div>
+              {isAdmin && (
+                <div className="mt-4 flex flex-wrap gap-1 border-t border-border pt-3" onClick={stop}>
+                  <Button variant="ghost" onClick={() => setForm({ open: true, campaign: c })}>Editar</Button>
+                  <Button variant="ghost" onClick={() => router.push(`/dashboard/campaigns/${c.campaign_id}/assign`)}>Asignar</Button>
+                  {c.source === 'EXCEL' && (
+                    <Button variant="ghost" loading={syncing === c.campaign_id} onClick={() => sync(c)}>Sincronizar</Button>
+                  )}
+                  <Button variant="ghost" onClick={() => toggleStatus(c)}>{c.status ? 'Desactivar' : 'Activar'}</Button>
+                </div>
+              )}
+            </button>
+          ))}
+        </div>
       )}
+
+      <CampaignFormModal open={form.open} campaign={form.campaign} onClose={() => setForm({ open: false })} onSaved={load} />
     </div>
   )
 }

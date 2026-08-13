@@ -1,13 +1,20 @@
 import type { ReactNode } from 'react'
 
-export type BadgeTone = 'gray' | 'green' | 'red' | 'yellow' | 'blue'
+export type BadgeTone =
+  | 'neutral'
+  | 'positivo'
+  | 'negativo'
+  | 'agendado'
+  | 'nocontacto'
+  | 'singestion'
 
 const TONES: Record<BadgeTone, string> = {
-  gray: 'bg-gray-100 text-gray-700',
-  green: 'bg-green-100 text-green-800',
-  red: 'bg-red-100 text-red-800',
-  yellow: 'bg-amber-100 text-amber-800',
-  blue: 'bg-blue-100 text-blue-800',
+  neutral: 'bg-gray-100 text-text-muted',
+  positivo: 'bg-status-positivo-bg text-status-positivo',
+  negativo: 'bg-status-negativo-bg text-status-negativo',
+  agendado: 'bg-status-agendado-bg text-status-agendado',
+  nocontacto: 'bg-status-nocontacto-bg text-status-nocontacto',
+  singestion: 'bg-status-singestion-bg text-status-singestion',
 }
 
 type BadgeProps = {
@@ -15,7 +22,7 @@ type BadgeProps = {
   tone?: BadgeTone
 }
 
-export function Badge({ children, tone = 'gray' }: BadgeProps) {
+export function Badge({ children, tone = 'neutral' }: BadgeProps) {
   return (
     <span
       className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${TONES[tone]}`}
@@ -25,15 +32,15 @@ export function Badge({ children, tone = 'gray' }: BadgeProps) {
   )
 }
 
-// Color e etiqueta legible por cada status de LEAD_STATUS.
+// Color por cada status de LEAD_STATUS.
 export const LEAD_STATUS_TONE: Record<string, BadgeTone> = {
-  POSITIVO: 'green',
-  NEGATIVO: 'red',
-  AGENDADO: 'yellow',
-  NO_CONTACTO: 'gray',
-  SIN_GESTION: 'blue',
+  POSITIVO: 'positivo',
+  NEGATIVO: 'negativo',
+  AGENDADO: 'agendado',
+  NO_CONTACTO: 'nocontacto',
+  SIN_GESTION: 'singestion',
 }
 
 export function leadStatusTone(status: string): BadgeTone {
-  return LEAD_STATUS_TONE[status] ?? 'gray'
+  return LEAD_STATUS_TONE[status] ?? 'neutral'
 }

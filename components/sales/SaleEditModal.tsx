@@ -3,39 +3,59 @@
 import { useEffect, useState } from 'react'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
-import { Input } from '@/components/ui/Input'
-import { Select } from '@/components/ui/Select'
+import { FormSection } from '@/components/forms/FormSection'
 import { apiGet, apiSend } from '@/lib/api/client'
-import { SALE_FIELDS } from '@/lib/constants/leads'
-import type { Lead, SaleDetail } from '@/lib/types'
+import { SALE_SECTIONS, CLIENT_FIELD_NAMES } from '@/lib/constants/saleForm'
+import type { Me, SaleRow } from '@/lib/types'
+import { SaleFieldInput } from './SaleFieldInput'
+import type { SelectOption } from '@/components/ui/Select'
 
-type Props = { lead: Lead; onClose: () => void; onSaved: () => void }
+type SaleFull = { id_sale: string; client: Record<string, unknown> } & Record<string, unknown>
 
-export function SaleEditModal({ lead, onClose, onSaved }: Props) {
+function asStr(v: unknown): string {
+  if (v == null) return ''
+  if (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}T/.test(v)) return v.slice(0, 10)
+  return String(v)
+}
+
+type Props = { sale: SaleRow; onClose: () => void; onSaved: () => void }
+
+export function SaleEditModal({ sale, onClose, onSaved }: Props) {
   const [values, setValues] = useState<Record<string, string>>({})
+  const [supervisores, setSupervisores] = useState<SelectOption[]>([])
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
 
   useEffect(() => {
-    apiGet<SaleDetail>(`/api/leads/${lead.id}/sale`)
-      .then((s) => {
-        const next: Record<string, string> = {}
-        for (const f of SALE_FIELDS) {
-          const v = (s as Record<string, unknown>)[f.name]
-          next[f.name] = v == null ? '' : String(v)
+    apiGet<Me[]>('/api/users?role=SUPERVISOR')
+      .then((u) => setSupervisores(u.map((s) => ({ value: s.user_id, label: s.name }))))
+      .catch(() => {})
+    apiGet<SaleFull>(`/api/sales/${sale.id_sale}`)
+      .then((d) => {
+        const init: Record<string, string> = {}
+        for (const section of SALE_SECTIONS) {
+          for (const f of section.fields) {
+            const raw = CLIENT_FIELD_NAMES.has(f.name) ? d.client?.[f.name] : d[f.name]
+            init[f.name] = asStr(raw)
+          }
         }
-        setValues(next)
+        setValues(init)
       })
       .catch((e) => setError(e instanceof Error ? e.message : 'Error'))
-  }, [lead.id])
+  }, [sale.id_sale])
+
+  const set = (k: string) => (v: string) => setValues((s) => ({ ...s, [k]: v }))
+  const setMany = (patch: Record<string, string>) => setValues((s) => ({ ...s, ...patch }))
 
   async function save() {
     setLoading(true)
     setError('')
     try {
-      await apiSend(`/api/leads/${lead.id}/sale`, 'PATCH', {
+      await apiSend(`/api/sales/${sale.id_sale}`, 'PATCH', {
         ...values,
-        numeroLlamadas: Number(values.numeroLlamadas ?? 0),
+        pack_price: values.pack_price ? Number(values.pack_price) : undefined,
+        total_price: values.total_price ? Number(values.total_price) : undefined,
+        consolidado: values.consolidado ? Number(values.consolidado) : undefined,
       })
       onSaved()
       onClose()
@@ -50,7 +70,8 @@ export function SaleEditModal({ lead, onClose, onSaved }: Props) {
     <Modal
       open
       onClose={onClose}
-      title={`Venta — ${lead.client_number}`}
+      size="xl"
+      title={`Editar venta — ${sale.code}`}
       actions={
         <>
           <Button variant="secondary" onClick={onClose}>Cancelar</Button>
@@ -58,27 +79,15 @@ export function SaleEditModal({ lead, onClose, onSaved }: Props) {
         </>
       }
     >
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        {SALE_FIELDS.map((f) =>
-          f.kind === 'select' ? (
-            <Select
-              key={f.name}
-              label={f.label}
-              value={values[f.name] ?? ''}
-              onChange={(v) => setValues((s) => ({ ...s, [f.name]: v }))}
-              options={f.options ?? []}
-            />
-          ) : (
-            <Input
-              key={f.name}
-              label={f.label}
-              type={f.kind === 'number' ? 'number' : 'text'}
-              value={values[f.name] ?? ''}
-              onChange={(v) => setValues((s) => ({ ...s, [f.name]: v }))}
-            />
-          )
-        )}
-        {error && <p className="col-span-full text-sm text-red-600">{error}</p>}
+      <div className="flex flex-col gap-6">
+        {SALE_SECTIONS.map((section) => (
+          <FormSection key={section.title} title={section.title}>
+            {section.fields.map((f) => (
+              <SaleFieldInput key={f.name} field={f} value={values[f.name] ?? ''} onChange={set(f.name)} supervisores={supervisores} values={values} setMany={setMany} />
+            ))}
+          </FormSection>
+        ))}
+        {error && <p className="text-sm text-red-600">{error}</p>}
       </div>
     </Modal>
   )

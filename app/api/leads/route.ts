@@ -11,6 +11,9 @@ export async function GET(req: NextRequest) {
       await listLeads(user, {
         campaignId: searchParams.get('campaignId'),
         status: searchParams.get('status'),
+        asignadoA: searchParams.get('asignadoA'),
+        excludeFinal: searchParams.get('excludeFinal') === '1',
+        asesorView: searchParams.get('view') as 'pendientes' | 'historial' | null,
       })
     )
   } catch (e) {

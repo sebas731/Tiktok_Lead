@@ -3,21 +3,26 @@
 import { useState } from 'react'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
-import { Input } from '@/components/ui/Input'
 import { Select } from '@/components/ui/Select'
 import { Textarea } from '@/components/ui/Textarea'
 import { apiSend } from '@/lib/api/client'
-import { STATUS_OPTIONS, SALE_FIELDS, substatusOptions } from '@/lib/constants/leads'
+import { STATUS_OPTIONS, substatusOptions } from '@/lib/constants/leads'
 import type { Lead } from '@/lib/types'
 
-type Props = { lead: Lead; onClose: () => void; onSaved: () => void }
+type Props = {
+  lead: Lead
+  onClose: () => void
+  onSaved: () => void
+  onRegisterVenta?: () => void
+}
 
-export function LeadDetailModal({ lead, onClose, onSaved }: Props) {
+// Modal de GESTIÓN del lead (no de venta). El flujo de venta vive aparte
+// (modelo Venta + /api/ventas) y se construye en fases posteriores.
+export function LeadDetailModal({ lead, onClose, onSaved, onRegisterVenta }: Props) {
   const [status, setStatus] = useState(lead.status)
   const [subStatus, setSubStatus] = useState(lead.sub_status)
   const [observations, setObservations] = useState(lead.observations ?? '')
   const [reason, setReason] = useState(lead.reason ?? '')
-  const [sale, setSale] = useState<Record<string, string>>({})
   const [copied, setCopied] = useState(false)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
@@ -46,12 +51,6 @@ export function LeadDetailModal({ lead, onClose, onSaved }: Props) {
         observations,
         reason,
       })
-      if (status === 'POSITIVO' && !lead.saleDetail) {
-        await apiSend(`/api/leads/${lead.id}/sale`, 'POST', {
-          ...sale,
-          numeroLlamadas: Number(sale.numeroLlamadas ?? 0),
-        })
-      }
       onSaved()
       onClose()
     } catch (e) {
@@ -82,34 +81,11 @@ export function LeadDetailModal({ lead, onClose, onSaved }: Props) {
         <Select label="Sub-estado" value={subStatus} onChange={setSubStatus} options={subOptions} />
         <Textarea label="Observaciones" value={observations} onChange={setObservations} />
         <Textarea label="Motivo" value={reason} onChange={setReason} rows={2} />
-
-        {status === 'POSITIVO' && !lead.saleDetail && (
-          <div className="grid grid-cols-1 gap-3 rounded-lg border border-gray-200 p-4 sm:grid-cols-2">
-            <p className="col-span-full text-sm font-medium text-gray-700">Datos de la venta</p>
-            {SALE_FIELDS.map((f) =>
-              f.kind === 'select' ? (
-                <Select
-                  key={f.name}
-                  label={f.label}
-                  value={sale[f.name] ?? ''}
-                  onChange={(v) => setSale((s) => ({ ...s, [f.name]: v }))}
-                  options={f.options ?? []}
-                  placeholder="Selecciona"
-                />
-              ) : (
-                <Input
-                  key={f.name}
-                  label={f.label}
-                  type={f.kind === 'number' ? 'number' : 'text'}
-                  value={sale[f.name] ?? ''}
-                  onChange={(v) => setSale((s) => ({ ...s, [f.name]: v }))}
-                />
-              )
-            )}
-          </div>
+        {status === 'POSITIVO' && lead.status === 'POSITIVO' && !lead.sale && onRegisterVenta && (
+          <Button variant="secondary" onClick={onRegisterVenta}>Registrar venta</Button>
         )}
-        {status === 'POSITIVO' && lead.saleDetail && (
-          <p className="text-sm text-gray-500">Esta venta ya tiene detalle; su edición corresponde al área BACK.</p>
+        {status === 'POSITIVO' && lead.sale && (
+          <p className="text-sm text-text-muted">Este lead ya tiene una venta registrada.</p>
         )}
         {error && <p className="text-sm text-red-600">{error}</p>}
       </div>

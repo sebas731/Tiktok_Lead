@@ -1,60 +1,120 @@
 import { prisma } from '@/lib/prisma'
-import { Prisma } from '@/lib/generated/prisma/client'
-import { HttpError, requireString } from '@/lib/api/response'
-import { type AuthUser, campaignWhereForUser } from '@/lib/auth/authorize'
+import { Prisma, CampaignSource, LEAD_STATUS } from '@/lib/generated/prisma/client'
+import { HttpError, requireEnum, requireString } from '@/lib/api/response'
+import { type AuthUser, getCampaignFilter } from '@/lib/auth/authorize'
 
-/** Lista campañas visibles según el rol, con conteo de leads. */
+/**
+ * Lista campañas visibles según el rol, con conteo de leads.
+ * Para el ASESOR el conteo son SOLO sus leads sin gestionar (SIN_GESTION).
+ */
 export function listCampaigns(user: AuthUser) {
+  const leadSelect =
+    user.role === 'ASESOR'
+      ? {
+          where: {
+            asignadoAId: user.userId,
+            status: { notIn: [LEAD_STATUS.POSITIVO, LEAD_STATUS.NEGATIVO] },
+          },
+        }
+      : true
   return prisma.campaign.findMany({
-    where: campaignWhereForUser(user),
+    where: getCampaignFilter(user),
     orderBy: { createdAt: 'desc' },
-    include: { _count: { select: { lead: true } } },
+    include: { _count: { select: { lead: leadSelect } } },
   })
 }
 
 export async function createCampaign(input: Record<string, unknown>) {
+  const source = requireEnum(input.source ?? 'TIKTOK', CampaignSource, 'source')
   const data: Prisma.CampaignCreateInput = {
+    source,
     name: requireString(input.name, 'name'),
-    tiktokCampaignId: requireString(input.tiktokCampaignId, 'tiktokCampaignId'),
-    tiktokAdvertiserId: requireString(input.tiktokAdvertiserId, 'tiktokAdvertiserId'),
-    key: { connect: { id: requireString(input.keyId, 'keyId') } },
   }
   if (typeof input.denomination === 'string') data.denomination = input.denomination
+
+  // Validación por origen (a nivel de aplicación, no de base).
+  if (source === 'TIKTOK') {
+    data.tiktokCampaignId = requireString(input.tiktokCampaignId, 'tiktokCampaignId')
+    const keyId = requireString(input.keyId, 'keyId')
+    // El Advertiser ID es la Key: se deriva de ella, no se pide a mano (evita inconsistencias).
+    const key = await prisma.key.findUnique({ where: { id: keyId }, select: { advertiserId: true } })
+    if (!key) throw new HttpError(400, 'La Key seleccionada no existe')
+    data.tiktokAdvertiserId = key.advertiserId
+    data.key = { connect: { id: keyId } }
+  } else {
+    data.excelUrl = requireString(input.excelUrl, 'excelUrl')
+    // Un mismo Sheet mezcla campañas: se exige el valor que identifica a ésta.
+    data.excelCampaignFilter = requireString(input.excelCampaignFilter, 'excelCampaignFilter')
+    if (typeof input.excelGid === 'string') data.excelGid = input.excelGid
+    if (typeof input.excelCampaignColumn === 'string') data.excelCampaignColumn = input.excelCampaignColumn
+  }
   return prisma.campaign.create({ data })
 }
 
-export function updateCampaign(id: string, input: Record<string, unknown>) {
+/**
+ * Edita una campaña. NO permite cambiar `source` (ver PATCH route): cambiar el
+ * origen alteraría el significado de los leads ya importados/sincronizados.
+ * Persiste name/denomination/status + los campos del origen actual.
+ */
+export async function updateCampaign(id: string, input: Record<string, unknown>) {
+  const campaign = await prisma.campaign.findUnique({
+    where: { campaign_id: id },
+    select: { source: true },
+  })
+  if (!campaign) throw new HttpError(404, 'Campaña no encontrada')
+
   const data: Prisma.CampaignUpdateInput = {}
   if (typeof input.name === 'string') data.name = input.name
   if (typeof input.denomination === 'string') data.denomination = input.denomination
   if (typeof input.status === 'boolean') data.status = input.status
+
+  if (campaign.source === 'TIKTOK') {
+    if (typeof input.tiktokCampaignId === 'string') data.tiktokCampaignId = input.tiktokCampaignId
+    if (typeof input.keyId === 'string' && input.keyId) {
+      const key = await prisma.key.findUnique({ where: { id: input.keyId }, select: { advertiserId: true } })
+      if (!key) throw new HttpError(400, 'La Key seleccionada no existe')
+      data.key = { connect: { id: input.keyId } }
+      // El Advertiser ID se sincroniza con el de la Key.
+      data.tiktokAdvertiserId = key.advertiserId
+    }
+  } else {
+    if (typeof input.excelUrl === 'string') data.excelUrl = input.excelUrl
+    if (typeof input.excelGid === 'string') data.excelGid = input.excelGid
+    if (typeof input.excelCampaignFilter === 'string') data.excelCampaignFilter = input.excelCampaignFilter
+    if (typeof input.excelCampaignColumn === 'string') data.excelCampaignColumn = input.excelCampaignColumn
+  }
   return prisma.campaign.update({ where: { campaign_id: id }, data })
 }
 
-/**
- * Asigna usuarios (deben ser SUPERVISOR o BACK) a una campaña.
- * Idempotente: ignora los que ya estaban asignados.
- */
-export async function assignUsersToCampaign(campaignId: string, userIds: unknown) {
-  if (!Array.isArray(userIds) || userIds.length === 0) {
-    throw new HttpError(400, 'Debes enviar userIds (array no vacío)')
-  }
-  const ids = userIds.map((v, i) => requireString(v, `userIds[${i}]`))
+const ASSIGN_INCLUDE = {
+  user: { select: { user_id: true, name: true, document_number: true, rol: { select: { name: true } } } },
+} satisfies Prisma.CampaignAssignmentInclude
 
-  const valid = await prisma.user.findMany({
-    where: { user_id: { in: ids }, rol: { name: { in: ['SUPERVISOR', 'BACK'] } } },
+/** Usuarios actualmente asignados a la campaña. */
+export function listCampaignUsers(campaignId: string) {
+  return prisma.campaignAssignment.findMany({ where: { campaignId }, include: ASSIGN_INCLUDE })
+}
+
+/**
+ * Asigna un usuario (SUPERVISOR, BACK o ASESOR) a una campaña. El rol define
+ * sus permisos dentro de la campaña. Idempotente.
+ */
+export async function assignUserToCampaign(campaignId: string, userId: string) {
+  const user = await prisma.user.findFirst({
+    where: { user_id: userId, rol: { name: { in: ['SUPERVISOR', 'BACK', 'ASESOR'] } } },
     select: { user_id: true },
   })
-  if (valid.length !== ids.length) {
-    throw new HttpError(400, 'Solo se pueden asignar usuarios SUPERVISOR o BACK')
-  }
+  if (!user) throw new HttpError(400, 'El usuario debe ser SUPERVISOR, BACK o ASESOR')
+  await prisma.campaignAssignment.upsert({
+    where: { campaignId_userId: { campaignId, userId } },
+    create: { campaignId, userId },
+    update: {},
+  })
+  return listCampaignUsers(campaignId)
+}
 
-  await prisma.campaignAssignment.createMany({
-    data: ids.map((userId) => ({ campaignId, userId })),
-    skipDuplicates: true,
-  })
-  return prisma.campaignAssignment.findMany({
-    where: { campaignId },
-    include: { user: { select: { user_id: true, name: true, rol: { select: { name: true } } } } },
-  })
+/** Quita un usuario de la campaña. */
+export async function removeCampaignUser(campaignId: string, userId: string) {
+  await prisma.campaignAssignment.deleteMany({ where: { campaignId, userId } })
+  return { removed: true }
 }

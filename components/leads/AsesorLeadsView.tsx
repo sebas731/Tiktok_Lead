@@ -1,8 +1,11 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { Table, type Column } from '@/components/ui/Table'
 import { Badge, leadStatusTone } from '@/components/ui/Badge'
+import { Tabs } from '@/components/ui/Tabs'
+import { PageHeader } from '@/components/layout/PageHeader'
 import { apiGet } from '@/lib/api/client'
 import { STATUS_LABELS, SUBSTATUS_LABELS } from '@/lib/constants/leads'
 import type { Lead } from '@/lib/types'
@@ -11,16 +14,22 @@ import { LeadDetailModal } from './LeadDetailModal'
 const FINALES = ['POSITIVO', 'NEGATIVO']
 
 export function AsesorLeadsView() {
+  const router = useRouter()
   const [leads, setLeads] = useState<Lead[]>([])
-  const [active, setActive] = useState<Lead | null>(null)
+  const [tab, setTab] = useState('activos')
+  const [detail, setDetail] = useState<Lead | null>(null)
   const [error, setError] = useState('')
 
   function load() {
     apiGet<Lead[]>('/api/leads')
-      .then((all) => setLeads(all.filter((l) => !FINALES.includes(l.status))))
+      .then(setLeads)
       .catch((e) => setError(e instanceof Error ? e.message : 'Error'))
   }
   useEffect(load, [])
+
+  const rows = leads.filter((l) =>
+    tab === 'activos' ? !FINALES.includes(l.status) : FINALES.includes(l.status)
+  )
 
   const columns: Column<Lead>[] = [
     { key: 'phone', header: 'Teléfono', render: (l) => l.client_number },
@@ -33,21 +42,34 @@ export function AsesorLeadsView() {
   ]
 
   return (
-    <div className="space-y-6">
-      <h1 className="text-2xl font-semibold text-gray-900">Mis leads</h1>
-      {error && <p className="text-sm text-red-600">{error}</p>}
+    <div>
+      <PageHeader title="Mis leads" />
+      <div className="mb-4">
+        <Tabs
+          tabs={[
+            { id: 'activos', label: 'Activos' },
+            { id: 'historial', label: 'Historial' },
+          ]}
+          active={tab}
+          onChange={setTab}
+        />
+      </div>
+      {error && <p className="mb-4 text-sm text-red-600">{error}</p>}
       <Table
         columns={columns}
-        rows={leads}
+        rows={rows}
         getRowKey={(l) => l.id}
-        onRowClick={setActive}
-        emptyMessage="No tienes leads pendientes."
+        onRowClick={setDetail}
+        emptyMessage="Sin leads en esta vista."
       />
-      {active && (
+      {detail && (
         <LeadDetailModal
-          lead={active}
-          onClose={() => setActive(null)}
+          lead={detail}
+          onClose={() => setDetail(null)}
           onSaved={load}
+          onRegisterVenta={() =>
+            router.push(`/dashboard/mis-ventas?leadId=${detail.id}&campaignId=${detail.campaignId}`)
+          }
         />
       )}
     </div>

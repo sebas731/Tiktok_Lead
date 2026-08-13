@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Input } from '@/components/ui/Input'
+import { Button } from '@/components/ui/Button'
 
 export function LoginForm() {
   const router = useRouter()
@@ -68,13 +69,9 @@ export function LoginForm() {
         </div>
       )}
 
-      <button
-        onClick={handleSubmit}
-        disabled={loading}
-        className="mt-2 rounded-lg bg-gray-900 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-gray-800 disabled:bg-gray-400"
-      >
-        {loading ? 'Ingresando...' : 'Iniciar sesión'}
-      </button>
+      <Button onClick={handleSubmit} loading={loading} className="mt-2 w-full">
+        Iniciar sesión
+      </Button>
     </div>
   )
 }

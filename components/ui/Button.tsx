@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 
-type ButtonVariant = 'primary' | 'secondary' | 'danger'
+type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger'
 
 type ButtonProps = {
   children: ReactNode
@@ -13,9 +13,12 @@ type ButtonProps = {
 }
 
 const VARIANTS: Record<ButtonVariant, string> = {
-  primary: 'bg-gray-900 text-white hover:bg-gray-800 disabled:bg-gray-400',
-  secondary: 'border border-gray-300 bg-white text-gray-800 hover:bg-gray-50 disabled:text-gray-400',
-  danger: 'bg-red-600 text-white hover:bg-red-500 disabled:bg-red-300',
+  primary:
+    'bg-gradient-to-b from-brand-red to-brand-red-dk text-white shadow-brand hover:brightness-105 hover:-translate-y-0.5 active:translate-y-0 disabled:opacity-50 disabled:shadow-none',
+  secondary:
+    'border border-border bg-surface text-text shadow-soft hover:bg-bg hover:-translate-y-0.5 active:translate-y-0 disabled:text-text-muted disabled:shadow-none',
+  ghost: 'text-text hover:bg-black/5 disabled:text-text-muted',
+  danger: 'bg-gradient-to-b from-red-600 to-red-800 text-white shadow-brand hover:brightness-105 disabled:opacity-50',
 }
 
 export function Button({
@@ -33,9 +36,9 @@ export function Button({
       onClick={onClick}
       disabled={disabled || loading}
       className={`
-        inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2
-        text-sm font-medium transition
-        disabled:cursor-not-allowed
+        inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2
+        text-sm font-medium transition-all duration-150
+        disabled:cursor-not-allowed disabled:hover:translate-y-0
         ${VARIANTS[variant]} ${className}
       `}
     >

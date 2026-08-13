@@ -8,7 +8,6 @@ generator client {
   output   = "../lib/generated/prisma"
 }
 
-
 datasource db {
   provider = "postgresql"
 }
@@ -86,7 +85,15 @@ model User {
   leadsAsignados         Lead[]               @relation("LeadAsesor")
   asignacionesComoAsesor LeadAssignment[]     @relation("AsignacionAsesor")
   asignacionesRealizadas LeadAssignment[]     @relation("AsignacionPor")
-  ventasEditadas         LeadSaleDetail[]     @relation("EditadoPorBack")
+  leadsProcesados        LeadProcessLog[]     @relation("LeadProcesadoPor")
+
+  // sedes, grupos y ventas
+  sedeAccess           SedeAccess[]
+  gruposComoSupervisor Grupo[]       @relation("GrupoSupervisor")
+  membresiasGrupo      GrupoMember[] @relation("GrupoAsesor")
+  salesAsAdvisor       Sale[]        @relation("SaleAdvisor")
+  salesAsManager       Sale[]        @relation("SaleManager")
+  salesAsBack          Sale[]        @relation("SaleBack")
 }
 
 // ============================================================
@@ -107,18 +114,28 @@ model Key {
 // CAMPAIGN
 // ============================================================
 
+enum CampaignSource {
+  TIKTOK
+  EXCEL
+}
+
 model Campaign {
   campaign_id String @id @default(uuid())
-  
-  data_mode Boolean @default(true)
-  //por si el modo es false
-  link_Excel String 
 
-  // datos de la API de tiktok
-  tiktokCampaignId   String @unique
-  tiktokAdvertiserId String
+  // origen de la campaña; el usuario elige al crearla
+  source CampaignSource @default(TIKTOK)
 
-  //datos de la campaña         
+  // datos de la API de tiktok (obligatorios solo si source = TIKTOK, validado en el servicio)
+  tiktokCampaignId   String? @unique
+  tiktokAdvertiserId String?
+
+  // datos del origen Excel (obligatorios solo si source = EXCEL, validado en el servicio)
+  excelUrl            String? // link del Google Sheet
+  excelGid            String? // id de la pestaña específica
+  excelCampaignFilter String? // texto exacto que identifica esta campaña en la columna de campaña
+  excelCampaignColumn String? // nombre/índice de la columna donde buscar (default: header "campaña")
+
+  //datos de la campaña
   name         String
   denomination String?
   status       Boolean @default(true)
@@ -134,14 +151,16 @@ model Campaign {
   createdAt  DateTime  @default(now())
   updatedAt  DateTime  @updatedAt
 
-  // relations
-  key   Key    @relation(fields: [keyId], references: [id])
-  keyId String
+  // relations (key opcional: solo campañas TikTok)
+  key   Key?    @relation(fields: [keyId], references: [id])
+  keyId String?
 
   lead Lead[]
 
   // usuarios asignados (supervisores y back)
   campaignAssignments CampaignAssignment[]
+
+  sales Sale[]
 }
 
 // ============================================================
@@ -180,6 +199,12 @@ model Lead {
   observations  String?
   reason        String
 
+  // id nativo de TikTok (los leads de Excel no lo tienen) — para sync idempotente
+  tiktokLeadId String? @unique
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
   campaign   Campaign @relation(fields: [campaignId], references: [campaign_id])
   campaignId String
 
@@ -187,10 +212,12 @@ model Lead {
   asignadoA   User?   @relation("LeadAsesor", fields: [asignadoAId], references: [user_id])
   asignadoAId String?
 
-  // historial de asignaciones y detalle de venta
+  // historial de asignaciones, procesos y la venta cerrada
   assignments LeadAssignment[]
-  saleDetail  LeadSaleDetail?
+  processLogs LeadProcessLog[]
+  sale        Sale?
 
+  @@unique([client_number, campaignId])
   @@index([status])
   @@index([campaignId])
   @@index([asignadoAId])
@@ -232,29 +259,517 @@ model LeadAssignment {
 }
 
 // ============================================================
-// LEAD SALE DETAIL (detalle de venta: status POSITIVO + sub_status VENTA)
+// LEAD PROCESS LOG (rastro de quién procesó cada lead y en qué estado lo dejó)
 // ============================================================
 
-model LeadSaleDetail {
-  id     String @id @default(uuid())
-  lead   Lead   @relation(fields: [leadId], references: [id])
-  leadId String @unique
+model LeadProcessLog {
+  id           String         @id @default(uuid())
+  lead         Lead           @relation(fields: [leadId], references: [id])
+  leadId       String
+  user         User           @relation("LeadProcesadoPor", fields: [userId], references: [user_id])
+  userId       String
+  status       LEAD_STATUS
+  sub_status   LEAD_SUBSTATUS
+  observations String?
+  processedAt  DateTime       @default(now())
 
-  agenteNombre     String
-  supervisorNombre String
-  canalVenta       String
-  titularNombre    String
-  contactoNombre   String
-  parentesco       String
-  nombrePadres     String?
-  tipoDocumento    DocumentType
-  numeroDocumento  String
-  numeroGrabacion  String?
-  numeroLlamadas   Int          @default(0)
+  @@index([leadId])
+  @@index([userId])
+}
 
-  editadoPorBack   User?   @relation("EditadoPorBack", fields: [editadoPorBackId], references: [user_id])
-  editadoPorBackId String?
+// ============================================================
+// SEDES
+// ============================================================
 
+model Sede {
+  sede_id   String   @id @default(uuid())
+  code      String   @unique // código corto, ej. "LIM01", "SIS02"
+  name      String
+  address   String?
+  status    Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  access SedeAccess[]
+  sales  Sale[]
+  grupos Grupo[]
+}
+
+model SedeAccess {
+  id        String    @id @default(uuid())
+  sede      Sede      @relation(fields: [sedeId], references: [sede_id])
+  sedeId    String
+  user      User      @relation(fields: [userId], references: [user_id])
+  userId    String
+  grantedAt DateTime  @default(now())
+  expiresAt DateTime? // null = acceso permanente
+  active    Boolean   @default(true)
+
+  @@unique([sedeId, userId])
+  @@index([userId])
+}
+
+// ============================================================
+// GRUPOS (jerarquía supervisor → asesores)
+// ============================================================
+
+model Grupo {
+  grupo_id     String   @id @default(uuid())
+  name         String
+  supervisor   User     @relation("GrupoSupervisor", fields: [supervisorId], references: [user_id])
+  supervisorId String
+  // Un grupo (sala) pertenece a UNA sola sede.
+  sede         Sede     @relation(fields: [sedeId], references: [sede_id])
+  sedeId       String
+  status       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+
+  members GrupoMember[]
+
+  @@index([supervisorId])
+  @@index([sedeId])
+}
+
+model GrupoMember {
+  id       String   @id @default(uuid())
+  grupo    Grupo    @relation(fields: [grupoId], references: [grupo_id])
+  grupoId  String
+  asesor   User     @relation("GrupoAsesor", fields: [asesorId], references: [user_id])
+  asesorId String
+  joinedAt DateTime @default(now())
+
+  @@unique([grupoId, asesorId])
+  @@index([asesorId])
+}
+
+// ============================================================
+// VENTA — estructura de 4 tablas (Client, Sale, SaleDetail, InstallationSchedule)
+// ============================================================
+
+model Client {
+  id_cliente        String       @id @default(uuid())
+  document_type     DocumentType @default(DNI)
+  document_number   String
+  titular_name      String
+  last_names        String
+  contacto_name     String? // contacto (nombres y apellidos)
+  parentesco        String?
+  fathers_name      String?
+  number_calls      String? // teléfono para el técnico
+  number_whatsapp   String? // para cobranzas
+  operator_client   Operator @default(CLARO) // operadora del celular principal
+  birth_date        DateTime?
+  birth_place       String?
+  gender            Gender @default(NO_ESPECIFICO)
+  department        String? //DEPARTAMENTOS
+  province          String? //PROVINCIAS
+  district          String? //DISTRITOS
+  address           String?
+  reference_address String?
+  nodo              String?
+  email             String?
+  ubigeo            String?
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
+
+  sales Sale[]
+}
+
+model Sale {
+  id_sale String @id @default(uuid())
+  code    String @unique // código de venta, ej. VNT-20260626...
+
+  // Relaciones
+  client           Client   @relation(fields: [clientId], references: [id_cliente])
+  clientId         String
+  campaign         Campaign @relation(fields: [campaingId], references: [campaign_id])
+  campaingId       String
+  lead             Lead?    @relation(fields: [leadId], references: [id])
+  leadId           String?  @unique
+  advisor          User     @relation("SaleAdvisor", fields: [advisorId], references: [user_id])
+  advisorId        String
+  managerAdvisor   User?    @relation("SaleManager", fields: [managerAdvisorId], references: [user_id])
+  managerAdvisorId String?
+  backOffice       User?    @relation("SaleBack", fields: [backOfficeId], references: [user_id])
+  backOfficeId     String?
+  sede             Sede     @relation(fields: [sedeId], references: [sede_id])
+  sedeId           String
+
+  sale_date DateTime @default(now())
+
+  // Estado de venta (motivo + submotivo) y que puede editar el back
+  reason     SaleStatus     @default(INGRESADA)
+  sub_reason SaleSubStatus?
+
+  // Campos que llena el ASESOR
+  sale_channel   SaleChannel @default(TIKTOK)
+  number_record String? //N° de grabacion
+  product_play   ProductPlay @default(THREE_PLAY)
+  product        Product @default(HFC_PURO)
+  network_plan   NetworkPlan @default(MB_150)
+  tv_plan        TvPlan @default(CLARO_HD_TV_BASICO)
+  phone_plan     PlainPhone @default(MINUTOS_1000)
+  type_sale      TypeSale @default(ALTA_NUEVA)
+  pack_price     Float?
+  repeater       Repetidor @default(MESH_1)
+  deco1          OpcionDeco1 @default(DECO_BASICO_HD_1)
+  deco2          OpcionDeco2 @default(DECO_BASICO_SD_1)
+  premium_pack   PremiunPacks
+  total_price    Float?
+  observations   String?  
+  equifax_document    String? // ruta o url del archivo
+  record_validation   RecordValidation
+  full_claro          FullClaro
+  region  Region @default(CENTRO)
+  client_pay ClientPay //CLIENTE DE PAGO
+  operation_type OperationType //tipo de operacion
+  address_type   BuildType //TIPO DE DOMICILIO
+  high_value     HighValue
+  consolidado         Int?
+
+  // Campos que llena el BACK
+  sec                 String?
+  sot                 String?
+  ugis                String?
+  contrata_inst       String?
+  codigo_cliente_pago String?
+
+  sale_details SaleDetail?
+  installation InstallationSchedule?
+
+ //campos automaticos
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@index([campaingId])
+  @@index([advisorId])
+  @@index([sedeId])
+  @@index([reason])
 }
+
+// Seguimiento posterior, lo llena BACK
+model SaleDetail {
+  id_sale_detail String @id @default(uuid())
+  sale           Sale   @relation(fields: [saleId], references: [id_sale])
+  saleId         String @unique
+  cod_client        String?
+  //payment_date      DateTime?
+  //payment_status    String?
+  pdv               Pdv
+  rejection_date    DateTime?
+  contrata_ins      String?
+  installation_date DateTime?
+  loteado           Loteado
+  equifax           Equifax 
+  created_at DateTime @default(now())
+  update_at  DateTime @updatedAt
+}
+enum Pdv {
+  PDV_LIMA
+  PDV_NORTE
+}
+enum Equifax {
+  PENDIENTE_DE_VALIDAR @map("PENDIENTE DE VALIDAR")
+  APROBADO @map("APROBADO")
+  DESAPROBADO @map("DESAPROBADO")
+  NO_PROCEDE @map("NO PROCEDE")
+}
+
+enum Loteado {
+  NO @map("NO")
+  SI @map("SI")
+  VOLVER_A_GRABAR @map("VOLVER A GRABAR")
+  NO_HAY_GRABACION @map("NO HAY GRABACION")
+  ENVIADO_SUBSANADO @map("ENVIADO-SUBSANADO")
+  PENDIENTE_DE_LOTEAR @map("PENDIENTE DE LOTEAR")
+  FALTA_GRAVE_DE_CALIDAD @map("FALTA GRAVE DE CALIDAD")
+
+}
+
+model InstallationSchedule {
+  sale              Sale      @relation(fields: [saleId], references: [id_sale])
+  saleId            String    @id
+  installation_date DateTime?
+  installation_time String? //salir el rango en el front end ocn un cboBox 2:00 a 6:00 pm / 9:00 a 1:00 pm
+  coments           String?
+}
+
+
+
+// ============================================================
+// ENUMS DE ESTADO DE VENTA (el submotivo depende del motivo — ver lib/constants/saleStatus.ts)
+// ============================================================
+
+enum SaleStatus {
+  EN_GESTION
+  INGRESADA
+  RECHAZADO
+  NO_INGRESADA
+  PENDIENTE_DE_INGRESO
+  INSTALADA
+  NO_INSTALADO
+  PRE_RECHAZO
+  OBSERVADO
+  REINGRESADO
+  REASIGNACION
+  REMEDY
+}
+
+enum SaleSubStatus {
+  // EN_GESTION
+  SIN_INGRESO
+  // INGRESADA
+  PROGRAMADO
+  SIN_PROGRAMAR
+  SEGUIMIENTO
+  EN_EJECUCION
+  PENDIENTE_DE_APROBACION_CREDITICIA
+  PENDIENTE_DE_EVALUACION_CREDITICIA
+  AUDIO_OBSERVADO
+  PENDIENTE_DE_APROBACION_DE_AUDIO
+  PENDIENTE_DE_GRABACION
+  PRE_RECHAZO
+  SIN_AGENDAMIENTO_EN_SISTEMA
+  REINGRESADO
+  DERIVADO_A_PLANTA_EXTERNA
+  PENDIENTE_POR_AMPLIACION_DE_FAT
+  EDIFICIO_SERA_CONSTRUIDO_CON_RED_FTTH
+  // RECHAZADO
+  CLIENTE_CON_DEUDA
+  DIRECCION_CON_DEUDA
+  EDIFICIO_NO_LIBERADO
+  INGRESADO_POR_OTRO_CANAL
+  SIN_INFRAESTRUCTURA_DE_RED
+  ZONA_PELIGROSA
+  SERVICIO_SUSPENDIDO
+  CONTRATO_MOVISTAR
+  SOT_CON_ERRORES_DE_SISTEMAS
+  NO_CUENTA_CON_SUMINISTRO_DE_LUZ
+  DUPLICIDAD
+  AUDIO_NO_CARGADO
+  POR_MAL_INGRESO_DE_DIRECCION
+  POR_MALA_OFERTA
+  SE_DERIVO_AL_BUZON_DE_ANALISIS_DE_RECHAZO
+  // NO_INGRESADA
+  DATOS_INCORRECTOS
+  OFERTA_INVALIDA
+  FALTA_DE_CONTRATO_DE_VOZ
+  RECHAZADO_POR_VALIDACION
+  NO_DESEA_PAGAR_RENTA_ADELANTADA
+  NO_TIENE_DELIVERY_EN_LA_ZONA
+  MIGRACION_DE_PREPAGO_A_POSTPAGO
+  NO_CALIFICA_A_ALTA_NUEVA
+  NO_CALIFICA_A_PORTABILIDAD
+  PLANO_NO_HABILITADO
+  CLIENTE_INUBICABLE
+  // PENDIENTE_DE_INGRESO
+  CONSULTA_PREVIA
+  NO_HAY_SISTEMA
+  DEUDA_EN_CLARO
+  PENDIENTE_DE_APROBACION_CASO_PARAMETRO
+  DIRECCION_INCORRECTA
+  PENDIENTE_DE_GENERAR_SOT
+  PENDIENTE_DE_DNI_CE
+  SIN_FRANJA_DISPONIBLE_EN_CONSULTA
+  SE_ENVIO_DNI_A_SEGMENTOS
+  CALL_PAGO_INSTALACION
+  CLIENTE_PAGO_INSTALACION
+  BLOQUEADO_POR_EQUIFAX
+  PENDIENTE_DE_PAGO_DE_INST
+  PORTABILIDAD_DEUDA_EN_MOVISTAR
+  SOLICITA_RENTA_ADELANTADA
+  // INSTALADA
+  ATENDIDA
+  INSTALADO_POR_CERRAR
+  PENDIENTE_DE_PORTABILIDAD
+  ATENDIDA_X_REASIGNACION
+  ATENDIDA_POR_EMPRESAS
+  ATENDIDA_X_CALL
+  // NO_INSTALADO
+  CLIENTE_DESISTE
+  RETENCION_DE_MOVISTAR
+  OTRO
+  // PRE_RECHAZO
+  SE_MANDO_A_LEVANTAR_SOT
+  SEGUIMIENTO_POR_BACK_NO_CONTESTA
+  // OBSERVADO
+  REASIGNACION_EN_CONTRA
+  ATENDIDOS_POR_EMPRESAS
+  VERIFICANDO_RED_EN_LA_ZONA
+  PENDIENTE_DE_REASIGNACION
+  // REINGRESADO
+  A_SOLICITUD_DEL_CLIENTE
+  AUTOMATICO
+  // REASIGNACION
+  PENDIENTE_DE_ENVIAR
+  ENVIADO_A_REASIGNAR
+  // REMEDY
+  PENDIENTE_DE_INGRESO
+}
+
+// DEBE APARECER SIN GUIONES BAJOS EN EL THOR
+
+enum SaleChannel {
+  BASE_DE_DATOS
+  RRSS_THOR
+  RECUPEROS
+  FACEBOOK
+  TIKTOK
+  INSTAGRAM
+  GOOGLE
+}
+
+enum Operator {
+  MOVISTAR
+  CLARO
+  ENTEL
+  BITEL
+
+}
+
+enum Gender {
+  MASCULINO
+  FEMENINO
+  NO_ESPECIFICO
+}
+
+enum ProductPlay {
+  ONE_PLAY @map("1 PLAY")
+  TWO_PLAY @map("2 PLAY")
+  THREE_PLAY @map("3 PLAY")
+}
+
+enum Product {
+  HFC_PURO             @map("HFC PURO")
+  HFC_OFERTA_RELAMPAGO @map("HFC OFERTA RELAMPAGO")
+  FTTH_OFERTA_REGULAR  @map("FTTH OFERTA REGULAR")
+  FTTH_REGULAR         @map("FTTH REGULAR")
+  HFC_REGULAR          @map("HFC REGULAR")
+  FTTH_ATAQUE          @map("FTTH ATAQUE")
+  HFC_PROMO_BASICO     @map("HFC PROMO BASICO")
+  FTTH_PROMO_BASICO    @map("FTTH PROMO BASICO")
+  HFC_REGULAR_PRO      @map("HFC REGULAR PRO")
+  FTTH_REGULAR_PRO     @map("FTTH REGULAR PRO")
+  FTTH_PROMO_1_SOL     @map("FTTH PROMO 1 SOL")
+  HFC_PROMO_1_SOL      @map("HFC PROMO 1 SOL")
+  HFC_PROMO_GRANDE     @map("HFC PROMO GRANDE")
+  FTTH_PROMO_GRANDE    @map("FTTH PROMO GRANDE")
+  HFC_ATAQUE           @map("HFC ATAQUE")
+}
+
+enum PlainPhone {
+  MINUTOS_1000 @map("1000 minutos")
+  MINUTOS_2000 @map("2000 minutos")
+}
+
+enum NetworkPlan {
+  MB_150 @map("150 MB")
+  MB_200 @map("200 MB")
+  MB_300 @map("300 MB")
+  MB_350 @map("350 MB")
+  MB_400 @map("400 MB")
+  MB_500 @map("500 MB")
+  MB_600 @map("600 MB")
+  MB_800 @map("800 MB")
+  MB_1000 @map("1000 MB")
+  MB_1500 @map("1500 MB")
+  GBPS_2 @map("2.5 GBPS")
+  GBPS_5 @map("5 GPBS")
+
+}
+
+enum TvPlan {
+
+  CLARO_HD_TV_BASICO @map("CLARO HD TV BASICO")
+  CLARO_HD_TV_AVANZADO @map("CLARO HD TV AVANZADO")
+  CLARO_HD_TV_SUPERIOR @map("CLARO HD TV SUPERIOR")
+}
+
+enum TypeSale {
+  ALTA_NUEVA
+  PORTABILIDAD
+}
+
+enum Repetidor {
+  MESH_1 @map("1 mesh")
+  MESH_2 @map("2 mesh")
+  MESH_3 @map("3 mesh")
+  MESH_4 @map("4 mesh")
+  MESH_5 @map("5 mesh")
+}
+
+enum OpcionDeco1 {
+  PUNTO_ADICIONAL_TV_HD_1 @map("1ER PUNTO ADICIONAL TV HD - S/ 0.00")
+  DECO_DOLBY_ATMOS_1       @map("1 Deco Dolby Atmos")
+  DECO_BASICO_HD_1        @map("1 Deco Basico HD - S/10.00")
+  DECO_BASICO_HD_2        @map("2 Decos Basicos HD - S/20.00")
+  DECO_BASICO_HD_3        @map("3 Decos Basicos HD - S/30.00")
+  DECO_HD_1               @map("1 Deco HD - S/15.00")
+  DECO_HD_2               @map("2 Decos HD - S/30.00")
+  DECO_HD_3               @map("3 Decos HD - S/45.00")
+  DECO_BASICO_SD_1        @map("1 Deco Basico SD - S/2.00")
+  DECO_BASICO_SD_2        @map("2 Decos Basicos SD - S/4.00")
+  DECO_BASICO_SD_3        @map("3 Decos Basicos SD - S/9.00")
+}
+
+enum OpcionDeco2 {
+  DECO_BASICO_SD_1 @map("1 Deco Basico SD - S/2.00")
+  DECO_BASICO_SD_2 @map("2 Decos Basicos SD - S/4.00")
+  DECO_BASICO_SD_3 @map("3 Decos Basicos SD - S/9.00")
+}
+
+enum PremiunPacks {
+  LIGA_1_MAX         @map("Liga 1 Max")
+  DECO_GRABADOR_20   @map("Deco Grabador S/20.00")
+  PAQUETE_HBO        @map("Paquete HBO")
+  PAQUETE_FOX        @map("Paquete FOX")
+  GOLDEN_PREMIUN     @map("Golden Premiun")
+  HOT_PACK           @map("Hot Pack")
+}
+
+enum RecordValidation  {
+  CONTACTO_CON_TERCERO        @map("Contacto Con Tercero")
+  PENDIENTE_DE_GRABAR         @map("Pendiente de Grabar")
+  PREVENTA_COMPLETO           @map("Preventa completo")
+  PREVENTA_INCOMPLETA         @map("Preventa Incompleta")
+  PREVENTA_Y_CONTRATO_COMPLETO @map("Preventa y Contrato Completo")
+  CONTRATO_SIN_PREVENTA       @map("Contrato sin Preventa")
+}
+
+enum FullClaro {
+  FULL_CLARO_MOVIL @map("FULL CLARO - MOVIL")
+  FULL_CLARO_FIJA @map("FULL CLARO - FIJA")
+  NO_APLICA @map("NO APLICA")
+}
+
+enum Region {
+  LIMA
+  NORTE
+  SUR
+  CENTRO
+}
+
+enum ClientPay {
+  CLIENTE_PAGARA_LOS_60_SOLES @map("Cliente pagará los 60 soles")
+  EMPRESA_PAGARA_LOS_60_SOLES @map("Empresa pagará los 60 soles")
+  VENTA_CON_INSTALACION_GRATUITA @map("Venta con instalación gratuita")
+}
+
+enum OperationType {
+  PLAN_RESIDENCIAL @map("PLAN RESIDENCIAL")
+  PLAN_CORPORATIVO @map("PLAN CORPORATIVO")
+}
+
+enum HighValue {
+  NO_CALIFICA_A_PLAN_DE_TV @map("No califica a plan de Tv")
+  CALIFICA_A_PLAN_TV @map("Califica a plan TV")
+  SOLO_QUIERE_INTERNET @map("Solo quiere internet")
+  OTRO @map("OTRO")
+}
+
+//tipo de domicilio
+enum BuildType {
+  EDIFICIO @map("VERTICAL")
+  CASA     @map("HORIZONTAL")
+}
+
+

@@ -27,11 +27,12 @@ export function Input({
         placeholder={placeholder}
         disabled={disabled}
         className={`
-          rounded-lg border px-3 py-2 text-sm outline-none transition
+          w-full rounded-xl border bg-bg/40 px-3.5 py-2.5 text-sm outline-none transition
+          focus:bg-white focus:ring-2
           disabled:bg-gray-50 disabled:text-gray-400
           ${error
-            ? 'border-red-400 focus:border-red-500'
-            : 'border-gray-300 focus:border-gray-900'
+            ? 'border-red-400 focus:border-red-500 focus:ring-red-500/15'
+            : 'border-border focus:border-brand-red focus:ring-brand-red/15'
           }
         `}
       />

@@ -1,11 +1,13 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import Link from 'next/link'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
-import { apiSend } from '@/lib/api/client'
-import type { Campaign } from '@/lib/types'
+import { Select } from '@/components/ui/Select'
+import { apiGet, apiSend } from '@/lib/api/client'
+import type { Campaign, KeyRow } from '@/lib/types'
 
 type Props = {
   open: boolean
@@ -14,30 +16,47 @@ type Props = {
   campaign?: Campaign | null
 }
 
+const SOURCE_OPTIONS = [
+  { value: 'TIKTOK', label: 'TikTok Ads' },
+  { value: 'EXCEL', label: 'Google Sheet (Excel)' },
+]
+
 export function CampaignFormModal({ open, onClose, onSaved, campaign }: Props) {
   const isEdit = Boolean(campaign)
   const [name, setName] = useState(campaign?.name ?? '')
   const [denomination, setDenomination] = useState(campaign?.denomination ?? '')
-  const [tiktokCampaignId, setTiktokCampaignId] = useState('')
-  const [tiktokAdvertiserId, setTiktokAdvertiserId] = useState('')
-  const [keyId, setKeyId] = useState('')
+  const [status, setStatus] = useState(campaign?.status ?? true)
+  const [source, setSource] = useState<'TIKTOK' | 'EXCEL'>(campaign?.source ?? 'TIKTOK')
+  const [tiktokCampaignId, setTiktokCampaignId] = useState(campaign?.tiktokCampaignId ?? '')
+  const [keyId, setKeyId] = useState(campaign?.keyId ?? '')
+  const [keys, setKeys] = useState<KeyRow[]>([])
+  const [excelUrl, setExcelUrl] = useState(campaign?.excelUrl ?? '')
+  const [excelGid, setExcelGid] = useState(campaign?.excelGid ?? '')
+  const [excelCampaignFilter, setExcelCampaignFilter] = useState(campaign?.excelCampaignFilter ?? '')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+
+  // Solo Keys activas para elegir (una Key inactiva no debería usarse en campañas nuevas).
+  const activeKeys = useMemo(() => keys.filter((k) => k.status || k.id === keyId), [keys, keyId])
+  const selectedKey = keys.find((k) => k.id === keyId)
+
+  useEffect(() => {
+    if (open && source === 'TIKTOK') apiGet<KeyRow[]>('/api/keys').then(setKeys).catch(() => {})
+  }, [open, source])
 
   async function save() {
     setLoading(true)
     setError('')
     try {
+      // El Advertiser ID lo deriva el backend desde la Key.
+      const tiktokBody = { tiktokCampaignId, keyId }
+      const excelBody = { excelUrl, excelGid, excelCampaignFilter }
+      const originBody = source === 'TIKTOK' ? tiktokBody : excelBody
+
       if (isEdit && campaign) {
-        await apiSend(`/api/campaigns/${campaign.campaign_id}`, 'PATCH', { name, denomination })
+        await apiSend(`/api/campaigns/${campaign.campaign_id}`, 'PATCH', { name, denomination, status, ...originBody })
       } else {
-        await apiSend('/api/campaigns', 'POST', {
-          name,
-          denomination,
-          tiktokCampaignId,
-          tiktokAdvertiserId,
-          keyId,
-        })
+        await apiSend('/api/campaigns', 'POST', { name, denomination, source, ...originBody })
       }
       onSaved()
       onClose()
@@ -56,18 +75,72 @@ export function CampaignFormModal({ open, onClose, onSaved, campaign }: Props) {
       actions={
         <>
           <Button variant="secondary" onClick={onClose}>Cancelar</Button>
-          <Button onClick={save} loading={loading}>Guardar</Button>
+          <Button onClick={save} loading={loading} disabled={source === 'TIKTOK' && !keyId}>Guardar</Button>
         </>
       }
     >
       <div className="flex flex-col gap-4">
         <Input label="Nombre" value={name} onChange={setName} />
         <Input label="Denominación" value={denomination} onChange={setDenomination} />
-        {!isEdit && (
+        {isEdit && (
+          <Select
+            label="Estado"
+            value={status ? 'true' : 'false'}
+            onChange={(v) => setStatus(v === 'true')}
+            options={[
+              { value: 'true', label: 'Activa' },
+              { value: 'false', label: 'Inactiva' },
+            ]}
+          />
+        )}
+
+        <Select
+          label="Origen"
+          value={source}
+          onChange={(v) => setSource(v as 'TIKTOK' | 'EXCEL')}
+          options={SOURCE_OPTIONS}
+          disabled={isEdit}
+        />
+
+        {source === 'TIKTOK' ? (
           <>
+            {keys.length === 0 ? (
+              <div className="rounded-xl border border-amber-200 bg-amber-50 px-3.5 py-3 text-sm text-amber-800">
+                No hay Keys registradas. Crea una primero en{' '}
+                <Link href="/dashboard/keys" className="font-semibold underline">Gestión de Keys</Link>.
+              </div>
+            ) : (
+              <>
+                <Select
+                  label="Key (cuenta publicitaria)"
+                  value={keyId}
+                  onChange={setKeyId}
+                  placeholder="Selecciona una Key"
+                  options={activeKeys.map((k) => ({ value: k.id, label: `${k.name} — ${k.advertiserId}` }))}
+                />
+                {selectedKey && (
+                  <Input label="Advertiser ID (de la Key)" value={selectedKey.advertiserId} onChange={() => {}} disabled />
+                )}
+              </>
+            )}
             <Input label="TikTok Campaign ID" value={tiktokCampaignId} onChange={setTiktokCampaignId} />
-            <Input label="TikTok Advertiser ID" value={tiktokAdvertiserId} onChange={setTiktokAdvertiserId} />
-            <Input label="Key ID" value={keyId} onChange={setKeyId} placeholder="ID de una Key existente" />
+          </>
+        ) : (
+          <>
+            <Input label="URL del Google Sheet" value={excelUrl} onChange={setExcelUrl} />
+            <Input label="GID de la pestaña" value={excelGid} onChange={setExcelGid} />
+            <div>
+              <Input
+                label="Valor de campaña en la hoja"
+                value={excelCampaignFilter}
+                onChange={setExcelCampaignFilter}
+                placeholder="C3 CLIENTES POTENCIALES [300] PLAN 69 | 150 X DÍA"
+              />
+              <p className="mt-1 text-xs text-text-muted">
+                Debe coincidir con el valor de la columna de campaña en el Sheet. Solo se importarán las
+                filas con ese valor (se ignoran mayúsculas y espacios extra).
+              </p>
+            </div>
           </>
         )}
         {error && <p className="text-sm text-red-600">{error}</p>}

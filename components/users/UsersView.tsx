@@ -4,13 +4,16 @@ import { useEffect, useState } from 'react'
 import { Table, type Column } from '@/components/ui/Table'
 import { Button } from '@/components/ui/Button'
 import { Badge } from '@/components/ui/Badge'
+import { PageHeader } from '@/components/layout/PageHeader'
 import { apiGet } from '@/lib/api/client'
 import type { Me } from '@/lib/types'
 import { UserFormModal } from './UserFormModal'
+import { UserDetailModal } from './UserDetailModal'
 
 export function UsersView() {
   const [users, setUsers] = useState<Me[]>([])
-  const [form, setForm] = useState<{ open: boolean; user?: Me | null }>({ open: false })
+  const [createOpen, setCreateOpen] = useState(false)
+  const [detailId, setDetailId] = useState<string | null>(null)
   const [error, setError] = useState('')
 
   function load() {
@@ -27,33 +30,29 @@ export function UsersView() {
     {
       key: 'status',
       header: 'Estado',
-      render: (u) => <Badge tone={u.status ? 'green' : 'gray'}>{u.status ? 'Activo' : 'Inactivo'}</Badge>,
-    },
-    {
-      key: 'actions',
-      header: '',
-      render: (u) => (
-        <div onClick={(e) => e.stopPropagation()}>
-          <Button variant="secondary" onClick={() => setForm({ open: true, user: u })}>Editar</Button>
-        </div>
-      ),
+      render: (u) => <Badge tone={u.status ? 'positivo' : 'neutral'}>{u.status ? 'Activo' : 'Inactivo'}</Badge>,
     },
   ]
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold text-gray-900">Usuarios</h1>
-        <Button onClick={() => setForm({ open: true, user: null })}>Nuevo usuario</Button>
-      </div>
-      {error && <p className="text-sm text-red-600">{error}</p>}
-      <Table columns={columns} rows={users} getRowKey={(u) => u.user_id} emptyMessage="No hay usuarios." />
-      <UserFormModal
-        open={form.open}
-        user={form.user}
-        onClose={() => setForm({ open: false })}
-        onSaved={load}
+    <div>
+      <PageHeader
+        title="Usuarios"
+        description="Haz clic en un usuario para ver su detalle."
+        actions={<Button onClick={() => setCreateOpen(true)}>Nuevo usuario</Button>}
       />
+      {error && <p className="mb-4 text-sm text-red-600">{error}</p>}
+      <Table
+        columns={columns}
+        rows={users}
+        getRowKey={(u) => u.user_id}
+        onRowClick={(u) => setDetailId(u.user_id)}
+        emptyMessage="No hay usuarios."
+      />
+      <UserFormModal open={createOpen} user={null} onClose={() => setCreateOpen(false)} onSaved={load} />
+      {detailId && (
+        <UserDetailModal userId={detailId} onClose={() => setDetailId(null)} onChanged={load} />
+      )}
     </div>
   )
 }

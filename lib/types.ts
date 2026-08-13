@@ -21,6 +21,14 @@ export type Campaign = {
   name: string
   denomination: string | null
   status: boolean
+  source: 'TIKTOK' | 'EXCEL'
+  tiktokCampaignId: string | null
+  tiktokAdvertiserId: string | null
+  keyId: string | null
+  excelUrl: string | null
+  excelGid: string | null
+  excelCampaignFilter: string | null
+  excelCampaignColumn: string | null
   _count?: { lead: number }
 }
 
@@ -35,22 +43,58 @@ export type Lead = {
   campaignId: string
   asignadoAId: string | null
   asignadoA?: { user_id: string; name: string } | null
-  saleDetail?: { id: string } | null
+  sale?: { id_sale: string } | null
+  campaign?: { campaign_id: string; name: string } | null
 }
 
-export type SaleDetail = {
+// Los tipos de venta (Client/Sale/SaleDetail/InstallationSchedule) se agregan
+// cuando se construya la API/UI de ventas (Fases 3/5).
+
+export type SaleRow = {
+  id_sale: string
+  code: string
+  reason: string
+  sub_reason: string | null
+  sale_date: string
+  createdAt: string
+  backOfficeId: string | null
+  client?: { titular_name: string; last_names: string; document_number: string }
+  campaign?: { campaign_id: string; name: string }
+  advisor?: { user_id: string; name: string }
+  managerAdvisor?: { user_id: string; name: string } | null
+  sede?: { sede_id: string; code: string; name?: string }
+  backOffice?: { user_id: string; name: string } | null
+}
+
+export type Sede = {
+  sede_id: string
+  code: string
+  name: string
+  address: string | null
+  status: boolean
+  _count?: { sales: number }
+}
+
+export type Grupo = {
+  grupo_id: string
+  name: string
+  status: boolean
+  supervisor: { user_id: string; name: string }
+  sede: { sede_id: string; code: string; name: string }
+  members: { asesor: { user_id: string; name: string } }[]
+}
+
+export type KeyRow = {
   id: string
-  leadId: string
-  agenteNombre: string
-  supervisorNombre: string
-  canalVenta: string
-  titularNombre: string
-  contactoNombre: string
-  parentesco: string
-  nombrePadres: string | null
-  tipoDocumento: string
-  numeroDocumento: string
-  numeroGrabacion: string | null
-  numeroLlamadas: number
-  editadoPorBackId: string | null
+  name: string
+  advertiserId: string
+  tokenMasked: string
+  expiresAt: string | null
+  status: boolean
+  campaignCount: number
+}
+
+/** Nombre completo de un usuario (nombres + apellidos), sin espacios sobrantes. */
+export function fullName(u: Pick<Me, 'name' | 'first_last_name' | 'second_last_name'>): string {
+  return [u.name, u.first_last_name, u.second_last_name].filter(Boolean).join(' ').trim() || u.name
 }
