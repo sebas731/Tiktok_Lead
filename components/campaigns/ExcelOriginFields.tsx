@@ -18,6 +18,8 @@ type Props = {
   setExcelGid: (v: string) => void
   excelSheetName: string
   setExcelSheetName: (v: string) => void
+  autoSync: boolean
+  setAutoSync: (v: boolean) => void
   campaign?: Campaign | null
   onSynced?: () => void
 }
@@ -34,6 +36,7 @@ export function ExcelOriginFields({
   sheetAccessMode, setSheetAccessMode,
   excelGid, setExcelGid,
   excelSheetName, setExcelSheetName,
+  autoSync, setAutoSync,
   campaign, onSynced,
 }: Props) {
   const [tabs, setTabs] = useState<SheetTab[]>([])
@@ -122,6 +125,11 @@ export function ExcelOriginFields({
           Seleccionada: <span className="font-medium text-text">{excelSheetName || '(sin nombre)'}</span> · gid {excelGid}
         </p>
       )}
+
+      <label className="flex items-center gap-2 text-sm text-text">
+        <input type="checkbox" checked={autoSync} onChange={(e) => setAutoSync(e.target.checked)} />
+        Incluir en la sincronización programada (automática)
+      </label>
 
       {/* Detalle y estado de sincronización (solo en edición) */}
       {campaign && (

@@ -46,6 +46,35 @@ export type SyncResult = {
 }
 
 /**
+ * Sincroniza todas las campañas EXCEL activas con autoSync habilitado.
+ * La usa el endpoint /api/cron/sync (llamado por un cron externo). Cada
+ * campaña se aísla: si una falla, el resto continúa (y el error queda
+ * persistido en la propia campaña por syncExcelCampaign).
+ */
+export async function syncAllAutoCampaigns() {
+  const campaigns = await prisma.campaign.findMany({
+    where: {
+      source: 'EXCEL',
+      status: true,
+      autoSync: true,
+      excelUrl: { not: null },
+      excelGid: { not: null },
+    },
+    select: { campaign_id: true, name: true },
+  })
+  const results: { campaign: string; ok: boolean; imported?: number; error?: string }[] = []
+  for (const c of campaigns) {
+    try {
+      const r = await syncExcelCampaign(c.campaign_id)
+      results.push({ campaign: c.name, ok: true, imported: r.imported })
+    } catch (e) {
+      results.push({ campaign: c.name, ok: false, error: e instanceof Error ? e.message : 'Error' })
+    }
+  }
+  return { total: campaigns.length, ok: results.filter((r) => r.ok).length, results }
+}
+
+/**
  * Sincroniza los leads de una campaña Excel. Una pestaña = una campaña: se lee
  * la pestaña completa (identificada por gid). Idempotente: nunca sobreescribe la
  * gestión de los asesores (upsert con update vacío).

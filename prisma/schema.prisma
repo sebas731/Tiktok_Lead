@@ -131,6 +131,12 @@ enum SyncStatus {
   ERROR
 }
 
+// Modo de asignación de leads de una campaña.
+enum LeadMode {
+  NORMAL // el supervisor/admin asigna los leads a los asesores
+  AUTO // los asesores ven todos los leads de la campaña y los atienden ellos mismos
+}
+
 model Campaign {
   campaign_id String @id @default(uuid())
 
@@ -151,7 +157,9 @@ model Campaign {
   //datos de la campaña
   name         String
   denomination String?
-  status       Boolean @default(true)
+  status       Boolean  @default(true)
+  leadMode     LeadMode @default(NORMAL) // NORMAL: asignación manual · AUTO: autoservicio del asesor
+  autoSync     Boolean  @default(true) // si la sincronización programada la incluye (solo EXCEL)
 
   // metricas para el dhasboard
   impressions Int   @default(0)

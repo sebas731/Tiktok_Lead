@@ -21,6 +21,8 @@ export type Campaign = {
   name: string
   denomination: string | null
   status: boolean
+  leadMode: 'NORMAL' | 'AUTO'
+  autoSync: boolean
   source: 'TIKTOK' | 'EXCEL'
   tiktokCampaignId: string | null
   tiktokAdvertiserId: string | null

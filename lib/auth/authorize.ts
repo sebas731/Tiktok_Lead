@@ -1,6 +1,6 @@
 import { getSession } from '@/lib/auth/session'
 import { prisma } from '@/lib/prisma'
-import { Prisma, LEAD_STATUS } from '@/lib/generated/prisma/client'
+import { Prisma, LEAD_STATUS, LeadMode } from '@/lib/generated/prisma/client'
 
 // Roles del sistema (coinciden con ROL.name que viaja en el token).
 export type Role = 'ADMIN' | 'SUPERVISOR' | 'ASESOR' | 'BACK'
@@ -88,7 +88,9 @@ export function getLeadFilter(user: AuthUser): Prisma.LeadWhereInput {
     case 'BACK':
       return { ...enSusCampanias, status: LEAD_STATUS.POSITIVO }
     case 'ASESOR':
-      return { asignadoAId: user.userId }
+      // Ve sus leads asignados y, en campañas de modo AUTO, todos los de la
+      // campaña (autoservicio: los atiende él mismo).
+      return { OR: [{ asignadoAId: user.userId }, { campaign: { leadMode: LeadMode.AUTO } }] }
     default:
       throw new AuthError('Rol no reconocido', 403)
   }

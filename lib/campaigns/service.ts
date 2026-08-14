@@ -1,5 +1,5 @@
 import { prisma } from '@/lib/prisma'
-import { Prisma, CampaignSource, SheetAccessMode, LEAD_STATUS } from '@/lib/generated/prisma/client'
+import { Prisma, CampaignSource, SheetAccessMode, LeadMode, LEAD_STATUS } from '@/lib/generated/prisma/client'
 import { HttpError, requireEnum, requireString } from '@/lib/api/response'
 import { type AuthUser, getCampaignFilter } from '@/lib/auth/authorize'
 
@@ -8,13 +8,18 @@ import { type AuthUser, getCampaignFilter } from '@/lib/auth/authorize'
  * Para el ASESOR el conteo son SOLO sus leads sin gestionar (SIN_GESTION).
  */
 export function listCampaigns(user: AuthUser) {
+  // Para el ASESOR el conteo son sus leads por atender: los asignados a él y,
+  // en campañas de modo AUTO, también los leads sin asignar (pool autoservicio).
   const leadSelect =
     user.role === 'ASESOR'
       ? {
           where: {
-            asignadoAId: user.userId,
             status: { notIn: [LEAD_STATUS.POSITIVO, LEAD_STATUS.NEGATIVO] },
-          },
+            OR: [
+              { asignadoAId: user.userId },
+              { campaign: { leadMode: LeadMode.AUTO }, asignadoAId: null },
+            ],
+          } satisfies Prisma.LeadWhereInput,
         }
       : true
   return prisma.campaign.findMany({
@@ -31,6 +36,8 @@ export async function createCampaign(input: Record<string, unknown>) {
     name: requireString(input.name, 'name'),
   }
   if (typeof input.denomination === 'string') data.denomination = input.denomination
+  if (typeof input.leadMode === 'string') data.leadMode = requireEnum(input.leadMode, LeadMode, 'leadMode')
+  if (typeof input.autoSync === 'boolean') data.autoSync = input.autoSync
 
   // Validación por origen (a nivel de aplicación, no de base).
   if (source === 'TIKTOK') {
@@ -67,6 +74,8 @@ export async function updateCampaign(id: string, input: Record<string, unknown>)
   if (typeof input.name === 'string') data.name = input.name
   if (typeof input.denomination === 'string') data.denomination = input.denomination
   if (typeof input.status === 'boolean') data.status = input.status
+  if (typeof input.leadMode === 'string') data.leadMode = requireEnum(input.leadMode, LeadMode, 'leadMode')
+  if (typeof input.autoSync === 'boolean') data.autoSync = input.autoSync
 
   if (campaign.source === 'TIKTOK') {
     if (typeof input.tiktokCampaignId === 'string') data.tiktokCampaignId = input.tiktokCampaignId
@@ -86,6 +95,29 @@ export async function updateCampaign(id: string, input: Record<string, unknown>)
     }
   }
   return prisma.campaign.update({ where: { campaign_id: id }, data })
+}
+
+/**
+ * Elimina una campaña y sus datos dependientes (leads, asignaciones, logs).
+ * Se bloquea si la campaña tiene ventas registradas (no se pueden perder).
+ */
+export async function deleteCampaign(id: string) {
+  const campaign = await prisma.campaign.findUnique({ where: { campaign_id: id }, select: { campaign_id: true } })
+  if (!campaign) throw new HttpError(404, 'Campaña no encontrada')
+
+  const sales = await prisma.sale.count({ where: { campaingId: id } })
+  if (sales > 0) {
+    throw new HttpError(409, `No se puede eliminar: la campaña tiene ${sales} venta(s) registrada(s).`)
+  }
+
+  await prisma.$transaction([
+    prisma.leadProcessLog.deleteMany({ where: { lead: { campaignId: id } } }),
+    prisma.leadAssignment.deleteMany({ where: { lead: { campaignId: id } } }),
+    prisma.lead.deleteMany({ where: { campaignId: id } }),
+    prisma.campaignAssignment.deleteMany({ where: { campaignId: id } }),
+    prisma.campaign.delete({ where: { campaign_id: id } }),
+  ])
+  return { deleted: true }
 }
 
 const ASSIGN_INCLUDE = {

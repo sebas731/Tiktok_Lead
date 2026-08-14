@@ -31,6 +31,16 @@ export function CampaignsView({ role }: { role: Role }) {
     await apiSend(`/api/campaigns/${c.campaign_id}`, 'PATCH', { status: !c.status })
     load()
   }
+  async function remove(c: Campaign) {
+    if (!window.confirm(`¿Eliminar la campaña "${c.name}" y todos sus leads? Esta acción no se puede deshacer.`)) return
+    setNotice('')
+    try {
+      await apiSend(`/api/campaigns/${c.campaign_id}`, 'DELETE')
+      load()
+    } catch (e) {
+      setNotice(e instanceof Error ? e.message : 'Error al eliminar')
+    }
+  }
   async function sync(c: Campaign) {
     setSyncing(c.campaign_id)
     setNotice('')
@@ -92,6 +102,7 @@ export function CampaignsView({ role }: { role: Role }) {
                     <Button variant="ghost" loading={syncing === c.campaign_id} onClick={() => sync(c)}>Sincronizar</Button>
                   )}
                   <Button variant="ghost" onClick={() => toggleStatus(c)}>{c.status ? 'Desactivar' : 'Activar'}</Button>
+                  <Button variant="ghost" onClick={() => remove(c)}>Eliminar</Button>
                 </div>
               )}
             </button>
@@ -99,7 +110,16 @@ export function CampaignsView({ role }: { role: Role }) {
         </div>
       )}
 
-      <CampaignFormModal open={form.open} campaign={form.campaign} onClose={() => setForm({ open: false })} onSaved={load} />
+      {/* Se monta solo cuando está abierto para no arrastrar datos de otra campaña. */}
+      {form.open && (
+        <CampaignFormModal
+          key={form.campaign?.campaign_id ?? 'new'}
+          open
+          campaign={form.campaign}
+          onClose={() => setForm({ open: false })}
+          onSaved={load}
+        />
+      )}
     </div>
   )
 }

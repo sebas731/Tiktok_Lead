@@ -27,6 +27,8 @@ export function CampaignFormModal({ open, onClose, onSaved, campaign }: Props) {
   const [name, setName] = useState(campaign?.name ?? '')
   const [denomination, setDenomination] = useState(campaign?.denomination ?? '')
   const [status, setStatus] = useState(campaign?.status ?? true)
+  const [leadMode, setLeadMode] = useState<'NORMAL' | 'AUTO'>(campaign?.leadMode ?? 'NORMAL')
+  const [autoSync, setAutoSync] = useState(campaign?.autoSync ?? true)
   const [source, setSource] = useState<'TIKTOK' | 'EXCEL'>(campaign?.source ?? 'TIKTOK')
   const [tiktokCampaignId, setTiktokCampaignId] = useState(campaign?.tiktokCampaignId ?? '')
   const [keyId, setKeyId] = useState(campaign?.keyId ?? '')
@@ -54,13 +56,13 @@ export function CampaignFormModal({ open, onClose, onSaved, campaign }: Props) {
     try {
       // El Advertiser ID lo deriva el backend desde la Key.
       const tiktokBody = { tiktokCampaignId, keyId }
-      const excelBody = { excelUrl, excelGid, excelSheetName, sheetAccessMode }
+      const excelBody = { excelUrl, excelGid, excelSheetName, sheetAccessMode, autoSync }
       const originBody = source === 'TIKTOK' ? tiktokBody : excelBody
 
       if (isEdit && campaign) {
-        await apiSend(`/api/campaigns/${campaign.campaign_id}`, 'PATCH', { name, denomination, status, ...originBody })
+        await apiSend(`/api/campaigns/${campaign.campaign_id}`, 'PATCH', { name, denomination, status, leadMode, ...originBody })
       } else {
-        await apiSend('/api/campaigns', 'POST', { name, denomination, source, ...originBody })
+        await apiSend('/api/campaigns', 'POST', { name, denomination, source, leadMode, ...originBody })
       }
       onSaved()
       onClose()
@@ -105,6 +107,16 @@ export function CampaignFormModal({ open, onClose, onSaved, campaign }: Props) {
         )}
 
         <Select
+          label="Modo de asignación de leads"
+          value={leadMode}
+          onChange={(v) => setLeadMode(v as 'NORMAL' | 'AUTO')}
+          options={[
+            { value: 'NORMAL', label: 'Normal (el supervisor asigna los leads)' },
+            { value: 'AUTO', label: 'Automático (los asesores atienden todos los leads)' },
+          ]}
+        />
+
+        <Select
           label="Origen"
           value={source}
           onChange={(v) => setSource(v as 'TIKTOK' | 'EXCEL')}
@@ -145,6 +157,8 @@ export function CampaignFormModal({ open, onClose, onSaved, campaign }: Props) {
             setExcelGid={setExcelGid}
             excelSheetName={excelSheetName}
             setExcelSheetName={setExcelSheetName}
+            autoSync={autoSync}
+            setAutoSync={setAutoSync}
             campaign={campaign}
             onSynced={onSaved}
           />
