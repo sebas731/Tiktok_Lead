@@ -72,6 +72,11 @@ export function CampaignsView({ role }: { role: Role }) {
                 <p className="font-semibold text-text">{c.name}</p>
                 <Badge tone={c.source === 'TIKTOK' ? 'agendado' : 'singestion'}>{c.source}</Badge>
               </div>
+              {c.source === 'EXCEL' && c.lastSyncStatus === 'ERROR' && (
+                <p className="mb-2 rounded-lg bg-red-50 px-2 py-1 text-xs text-red-700" title={c.lastSyncError ?? ''}>
+                  ⚠ Falló la última sincronización
+                </p>
+              )}
               <div className="mt-auto flex items-end justify-between">
                 <div>
                   <p className="text-3xl font-semibold text-text">{c._count?.lead ?? 0}</p>

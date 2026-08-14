@@ -1,65 +1,23 @@
 import { prisma } from '@/lib/prisma'
 import { HttpError } from '@/lib/api/response'
-
-/** Construye la URL de exportación CSV de un Google Sheet a partir de su URL + gid. */
-function buildCsvUrl(excelUrl: string, excelGid: string | null): string {
-  const m = excelUrl.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/)
-  if (!m) {
-    // Puede que ya sea una URL de export directa.
-    if (excelUrl.includes('format=csv')) return excelUrl
-    throw new HttpError(400, 'La URL del Sheet no es válida')
-  }
-  const gid = excelGid || '0'
-  return `https://docs.google.com/spreadsheets/d/${m[1]}/export?format=csv&gid=${encodeURIComponent(gid)}`
-}
-
-/** Parser CSV que respeta comillas, comas y saltos de línea dentro de campos. */
-function parseCsv(text: string): string[][] {
-  const rows: string[][] = []
-  let row: string[] = []
-  let field = ''
-  let inQuotes = false
-  text = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n')
-  for (let i = 0; i < text.length; i++) {
-    const c = text[i]
-    if (inQuotes) {
-      if (c === '"') {
-        if (text[i + 1] === '"') { field += '"'; i++ } else inQuotes = false
-      } else field += c
-    } else if (c === '"') inQuotes = true
-    else if (c === ',') { row.push(field); field = '' }
-    else if (c === '\n') { row.push(field); rows.push(row); row = []; field = '' }
-    else field += c
-  }
-  if (field !== '' || row.length > 0) { row.push(field); rows.push(row) }
-  return rows
-}
+import { readSheetRows, findTabByGid, serviceAccountConfigured } from '@/lib/services/googleSheets'
 
 const digits = (s: string) => (s.match(/\d/g) || []).length
 
-/** ¿La celda parece un teléfono? (solo dígitos/espacios/+/-/() y 6-15 dígitos). */
+/** ¿La celda parece un teléfono? (6-15 dígitos tras limpiar separadores). */
 function looksLikePhone(s: string): boolean {
-  const cleaned = s.replace(/[\s+\-().]/g, '')
-  return /^\d{6,15}$/.test(cleaned)
+  return /^\d{6,15}$/.test(s.replace(/[\s+\-().]/g, ''))
 }
 
-/**
- * Columna de teléfono. Primero por encabezado (número/teléfono/celular…),
- * si no, por contenido tipo teléfono. Excluye la columna de campaña para no
- * confundir nombres de campaña que contienen números (ej. "|300| PLAN 69").
- */
-function detectPhoneColumn(rows: string[][], skipCol: number): number {
+/** Columna de teléfono: por encabezado, y si no, por contenido tipo teléfono. */
+function detectPhoneColumn(rows: string[][]): number {
   const header = rows[0]
-  const byHeader = header.findIndex(
-    (h, i) => i !== skipCol && /tel[eé]fono|n[uú]mero|celular|whatsapp|phone|\bcel\b/i.test(h)
-  )
+  const byHeader = header.findIndex((h) => /tel[eé]fono|n[uú]mero|celular|whatsapp|phone|\bcel\b/i.test(h))
   if (byHeader >= 0) return byHeader
-
   const cols = Math.max(...rows.map((r) => r.length), 0)
   let best = -1
   let bestCount = 0
   for (let c = 0; c < cols; c++) {
-    if (c === skipCol) continue
     let count = 0
     for (let r = 1; r < rows.length; r++) {
       if (rows[r][c] && looksLikePhone(rows[r][c])) count++
@@ -69,99 +27,123 @@ function detectPhoneColumn(rows: string[][], skipCol: number): number {
   return best
 }
 
-/** Detecta una columna de nombre por su encabezado. */
+/** Columna de nombre por su encabezado. */
 function detectNameColumn(header: string[]): number {
   return header.findIndex((h) => /nombre|cliente|name/i.test(h))
 }
 
-/** Normaliza: recorta, colapsa espacios internos y pasa a minúsculas. */
-function norm(s: string): string {
-  return s.trim().replace(/\s+/g, ' ').toLowerCase()
+async function markSyncError(campaignId: string, message: string) {
+  await prisma.campaign.update({
+    where: { campaign_id: campaignId },
+    data: { lastSyncAt: new Date(), lastSyncStatus: 'ERROR', lastSyncError: message.slice(0, 500) },
+  })
+}
+
+export type SyncResult = {
+  imported: number
+  total: number
+  renamed: { from: string; to: string } | null
 }
 
 /**
- * Clave de comparación tolerante para el valor de campaña: minúsculas, sin
- * tildes y solo letras/números. Así `C3 ... |300| ... DÍA` coincide con
- * `c3 ... [300] ... dia` y demás variaciones de puntuación/espacios/tildes.
+ * Sincroniza los leads de una campaña Excel. Una pestaña = una campaña: se lee
+ * la pestaña completa (identificada por gid). Idempotente: nunca sobreescribe la
+ * gestión de los asesores (upsert con update vacío).
  */
-function matchKey(s: string): string {
-  return s
-    .normalize('NFD')
-    .toLowerCase()
-    .replace(/[^a-z0-9]/g, '')
-}
-
-/**
- * Columna de campaña: por índice o nombre si se configuró `excelCampaignColumn`,
- * si no, busca un header que contenga "campaña"/"campaign".
- */
-function detectCampaignColumn(header: string[], configured: string | null): number {
-  if (configured) {
-    if (/^\d+$/.test(configured.trim())) return parseInt(configured, 10)
-    const idx = header.findIndex((h) => norm(h) === norm(configured))
-    if (idx >= 0) return idx
-  }
-  return header.findIndex((h) => /campa[ñn]a|campaign/i.test(h))
-}
-
-/**
- * Descarga el Sheet de una campaña EXCEL y crea leads de forma idempotente
- * (unique client_number+campaignId). Devuelve cuántos se importaron.
- */
-export async function syncExcelCampaign(campaignId: string) {
+export async function syncExcelCampaign(campaignId: string): Promise<SyncResult> {
   const campaign = await prisma.campaign.findUnique({ where: { campaign_id: campaignId } })
   if (!campaign) throw new HttpError(404, 'Campaña no encontrada')
   if (campaign.source !== 'EXCEL' || !campaign.excelUrl) {
     throw new HttpError(400, 'La campaña no es de origen EXCEL o no tiene URL')
   }
-  if (!campaign.excelCampaignFilter) {
-    throw new HttpError(400, 'La campaña no tiene configurado el valor de campaña en la hoja')
-  }
+  if (!campaign.excelGid) throw new HttpError(400, 'La campaña no tiene una pestaña seleccionada')
 
-  const url = buildCsvUrl(campaign.excelUrl, campaign.excelGid)
-  let csv: string
   try {
-    const res = await fetch(url, { redirect: 'follow' })
-    if (!res.ok) throw new Error(`HTTP ${res.status}`)
-    csv = await res.text()
-  } catch (e) {
-    throw new HttpError(502, 'No se pudo leer el Google Sheet: ' + (e instanceof Error ? e.message : ''))
-  }
+    let sheetTitle = campaign.excelSheetName ?? ''
+    let renamed: { from: string; to: string } | null = null
 
-  const rows = parseCsv(csv)
-  if (rows.length < 2) return { imported: 0, total: 0 }
+    // 1. Detección de renombrado/eliminación por gid (requiere Sheets API). En
+    //    PUBLIC_CSV sin Service Account se omite y se lee directamente por gid.
+    const canInspect = campaign.sheetAccessMode === 'SERVICE_ACCOUNT' || serviceAccountConfigured()
+    if (canInspect) {
+      const tab = await findTabByGid(campaign.excelUrl, campaign.excelGid)
+      if (!tab) {
+        const msg = `La pestaña (gid ${campaign.excelGid}) ya no existe en el documento. Selecciona otra.`
+        await markSyncError(campaignId, msg)
+        throw new HttpError(400, msg)
+      }
+      if (tab.title !== campaign.excelSheetName) {
+        renamed = { from: campaign.excelSheetName ?? '(sin nombre)', to: tab.title }
+      }
+      sheetTitle = tab.title
+    }
 
-  // La columna de campaña primero: se excluye al detectar el teléfono, para no
-  // confundir nombres de campaña que contienen números.
-  const campaignCol = detectCampaignColumn(rows[0], campaign.excelCampaignColumn)
-  if (campaignCol < 0) {
-    throw new HttpError(400, 'No se encontró la columna de campaña en el Sheet')
-  }
-  const phoneCol = detectPhoneColumn(rows, campaignCol)
-  if (phoneCol < 0) throw new HttpError(400, 'No se encontró una columna de teléfono en el Sheet')
-  const nameCol = detectNameColumn(rows[0])
-  const target = matchKey(campaign.excelCampaignFilter)
-
-  const seen = new Set<string>()
-  const leads: { client_number: string; name_client: string | null; campaignId: string; reason: string }[] = []
-  let matched = 0
-  for (let r = 1; r < rows.length; r++) {
-    // Solo filas cuya columna de campaña coincida (comparación tolerante a
-    // puntuación, tildes y mayúsculas).
-    if (matchKey(rows[r][campaignCol] || '') !== target) continue
-    matched++
-    const phone = (rows[r][phoneCol] || '').trim()
-    if (!phone || digits(phone) < 6 || seen.has(phone)) continue
-    seen.add(phone)
-    leads.push({
-      client_number: phone,
-      name_client: nameCol >= 0 ? (rows[r][nameCol] || '').trim() || null : null,
-      campaignId,
-      reason: '',
+    // 2. Leer filas (interfaz común: pública o privada)
+    const rows = await readSheetRows({
+      url: campaign.excelUrl,
+      mode: campaign.sheetAccessMode,
+      gid: campaign.excelGid,
+      sheetTitle,
     })
-  }
 
-  const result = await prisma.lead.createMany({ data: leads, skipDuplicates: true })
-  await prisma.campaign.update({ where: { campaign_id: campaignId }, data: { lastSyncAt: new Date() } })
-  return { imported: result.count, matched, total: leads.length }
+    if (rows.length < 2) {
+      await prisma.campaign.update({
+        where: { campaign_id: campaignId },
+        data: { lastSyncAt: new Date(), lastSyncStatus: 'OK', lastSyncError: null, excelSheetName: sheetTitle || campaign.excelSheetName },
+      })
+      return { imported: 0, total: 0, renamed }
+    }
+
+    // 3. Toda la pestaña pertenece a esta campaña (sin filtrar por columna)
+    const phoneCol = detectPhoneColumn(rows)
+    if (phoneCol < 0) throw new HttpError(400, 'No se encontró una columna de teléfono en la pestaña')
+    const nameCol = detectNameColumn(rows[0])
+
+    const seen = new Set<string>()
+    const leads: { client_number: string; name_client: string | null }[] = []
+    for (let r = 1; r < rows.length; r++) {
+      const phone = (rows[r][phoneCol] || '').trim()
+      if (!phone || digits(phone) < 6 || seen.has(phone)) continue
+      seen.add(phone)
+      leads.push({ client_number: phone, name_client: nameCol >= 0 ? (rows[r][nameCol] || '').trim() || null : null })
+    }
+
+    // 4. Cuántos son nuevos (para reportar), luego upsert idempotente
+    const existing = new Set(
+      (
+        await prisma.lead.findMany({
+          where: { campaignId, client_number: { in: leads.map((l) => l.client_number) } },
+          select: { client_number: true },
+        })
+      ).map((l) => l.client_number),
+    )
+
+    await prisma.$transaction(
+      leads.map((l) =>
+        prisma.lead.upsert({
+          where: { client_number_campaignId: { client_number: l.client_number, campaignId } },
+          create: { client_number: l.client_number, name_client: l.name_client, campaignId, reason: '' },
+          update: {}, // nunca pisa status/sub_status/observaciones/asignación
+        }),
+      ),
+    )
+
+    const imported = leads.filter((l) => !existing.has(l.client_number)).length
+    await prisma.campaign.update({
+      where: { campaign_id: campaignId },
+      data: {
+        lastSyncAt: new Date(),
+        lastSyncStatus: 'OK',
+        lastSyncError: null,
+        excelSheetName: sheetTitle || campaign.excelSheetName, // refresca el nombre si cambió
+      },
+    })
+    return { imported, total: leads.length, renamed }
+  } catch (e) {
+    // No fallar en silencio: deja el motivo persistido y visible en la UI.
+    if (!(e instanceof HttpError)) {
+      await markSyncError(campaignId, e instanceof Error ? e.message : 'Error desconocido')
+    }
+    throw e
+  }
 }

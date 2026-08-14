@@ -1,5 +1,5 @@
 import { prisma } from '@/lib/prisma'
-import { Prisma, CampaignSource, LEAD_STATUS } from '@/lib/generated/prisma/client'
+import { Prisma, CampaignSource, SheetAccessMode, LEAD_STATUS } from '@/lib/generated/prisma/client'
 import { HttpError, requireEnum, requireString } from '@/lib/api/response'
 import { type AuthUser, getCampaignFilter } from '@/lib/auth/authorize'
 
@@ -42,11 +42,11 @@ export async function createCampaign(input: Record<string, unknown>) {
     data.tiktokAdvertiserId = key.advertiserId
     data.key = { connect: { id: keyId } }
   } else {
+    // Una pestaña = una campaña: se exige la URL y la pestaña (gid) seleccionada.
     data.excelUrl = requireString(input.excelUrl, 'excelUrl')
-    // Un mismo Sheet mezcla campañas: se exige el valor que identifica a ésta.
-    data.excelCampaignFilter = requireString(input.excelCampaignFilter, 'excelCampaignFilter')
-    if (typeof input.excelGid === 'string') data.excelGid = input.excelGid
-    if (typeof input.excelCampaignColumn === 'string') data.excelCampaignColumn = input.excelCampaignColumn
+    data.excelGid = requireString(input.excelGid, 'excelGid')
+    if (typeof input.excelSheetName === 'string') data.excelSheetName = input.excelSheetName
+    data.sheetAccessMode = requireEnum(input.sheetAccessMode ?? 'PUBLIC_CSV', SheetAccessMode, 'sheetAccessMode')
   }
   return prisma.campaign.create({ data })
 }
@@ -80,8 +80,10 @@ export async function updateCampaign(id: string, input: Record<string, unknown>)
   } else {
     if (typeof input.excelUrl === 'string') data.excelUrl = input.excelUrl
     if (typeof input.excelGid === 'string') data.excelGid = input.excelGid
-    if (typeof input.excelCampaignFilter === 'string') data.excelCampaignFilter = input.excelCampaignFilter
-    if (typeof input.excelCampaignColumn === 'string') data.excelCampaignColumn = input.excelCampaignColumn
+    if (typeof input.excelSheetName === 'string') data.excelSheetName = input.excelSheetName
+    if (typeof input.sheetAccessMode === 'string') {
+      data.sheetAccessMode = requireEnum(input.sheetAccessMode, SheetAccessMode, 'sheetAccessMode')
+    }
   }
   return prisma.campaign.update({ where: { campaign_id: id }, data })
 }

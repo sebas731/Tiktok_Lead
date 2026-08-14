@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/Input'
 import { Select } from '@/components/ui/Select'
 import { apiGet, apiSend } from '@/lib/api/client'
 import type { Campaign, KeyRow } from '@/lib/types'
+import { ExcelOriginFields } from './ExcelOriginFields'
 
 type Props = {
   open: boolean
@@ -32,7 +33,10 @@ export function CampaignFormModal({ open, onClose, onSaved, campaign }: Props) {
   const [keys, setKeys] = useState<KeyRow[]>([])
   const [excelUrl, setExcelUrl] = useState(campaign?.excelUrl ?? '')
   const [excelGid, setExcelGid] = useState(campaign?.excelGid ?? '')
-  const [excelCampaignFilter, setExcelCampaignFilter] = useState(campaign?.excelCampaignFilter ?? '')
+  const [excelSheetName, setExcelSheetName] = useState(campaign?.excelSheetName ?? '')
+  const [sheetAccessMode, setSheetAccessMode] = useState<'PUBLIC_CSV' | 'SERVICE_ACCOUNT'>(
+    campaign?.sheetAccessMode ?? 'PUBLIC_CSV',
+  )
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
 
@@ -50,7 +54,7 @@ export function CampaignFormModal({ open, onClose, onSaved, campaign }: Props) {
     try {
       // El Advertiser ID lo deriva el backend desde la Key.
       const tiktokBody = { tiktokCampaignId, keyId }
-      const excelBody = { excelUrl, excelGid, excelCampaignFilter }
+      const excelBody = { excelUrl, excelGid, excelSheetName, sheetAccessMode }
       const originBody = source === 'TIKTOK' ? tiktokBody : excelBody
 
       if (isEdit && campaign) {
@@ -75,7 +79,13 @@ export function CampaignFormModal({ open, onClose, onSaved, campaign }: Props) {
       actions={
         <>
           <Button variant="secondary" onClick={onClose}>Cancelar</Button>
-          <Button onClick={save} loading={loading} disabled={source === 'TIKTOK' && !keyId}>Guardar</Button>
+          <Button
+            onClick={save}
+            loading={loading}
+            disabled={source === 'TIKTOK' ? !keyId : !excelUrl || !excelGid}
+          >
+            Guardar
+          </Button>
         </>
       }
     >
@@ -126,22 +136,18 @@ export function CampaignFormModal({ open, onClose, onSaved, campaign }: Props) {
             <Input label="TikTok Campaign ID" value={tiktokCampaignId} onChange={setTiktokCampaignId} />
           </>
         ) : (
-          <>
-            <Input label="URL del Google Sheet" value={excelUrl} onChange={setExcelUrl} />
-            <Input label="GID de la pestaña" value={excelGid} onChange={setExcelGid} />
-            <div>
-              <Input
-                label="Valor de campaña en la hoja"
-                value={excelCampaignFilter}
-                onChange={setExcelCampaignFilter}
-                placeholder="C3 CLIENTES POTENCIALES [300] PLAN 69 | 150 X DÍA"
-              />
-              <p className="mt-1 text-xs text-text-muted">
-                Debe coincidir con el valor de la columna de campaña en el Sheet. Solo se importarán las
-                filas con ese valor (se ignoran mayúsculas y espacios extra).
-              </p>
-            </div>
-          </>
+          <ExcelOriginFields
+            excelUrl={excelUrl}
+            setExcelUrl={setExcelUrl}
+            sheetAccessMode={sheetAccessMode}
+            setSheetAccessMode={setSheetAccessMode}
+            excelGid={excelGid}
+            setExcelGid={setExcelGid}
+            excelSheetName={excelSheetName}
+            setExcelSheetName={setExcelSheetName}
+            campaign={campaign}
+            onSynced={onSaved}
+          />
         )}
         {error && <p className="text-sm text-red-600">{error}</p>}
       </div>

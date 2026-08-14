@@ -27,10 +27,15 @@ export type Campaign = {
   keyId: string | null
   excelUrl: string | null
   excelGid: string | null
-  excelCampaignFilter: string | null
-  excelCampaignColumn: string | null
+  excelSheetName: string | null
+  sheetAccessMode: 'PUBLIC_CSV' | 'SERVICE_ACCOUNT'
+  lastSyncAt: string | null
+  lastSyncStatus: 'OK' | 'ERROR' | null
+  lastSyncError: string | null
   _count?: { lead: number }
 }
+
+export type SheetTab = { gid: number; title: string; index: number }
 
 export type Lead = {
   id: string

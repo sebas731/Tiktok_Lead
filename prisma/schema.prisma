@@ -119,6 +119,18 @@ enum CampaignSource {
   EXCEL
 }
 
+// Modo de lectura de una hoja de Google Sheets.
+enum SheetAccessMode {
+  PUBLIC_CSV // hoja compartida públicamente, se lee el CSV export
+  SERVICE_ACCOUNT // hoja privada, se lee vía Google Sheets API
+}
+
+// Resultado de la última sincronización de una campaña Excel.
+enum SyncStatus {
+  OK
+  ERROR
+}
+
 model Campaign {
   campaign_id String @id @default(uuid())
 
@@ -130,10 +142,11 @@ model Campaign {
   tiktokAdvertiserId String?
 
   // datos del origen Excel (obligatorios solo si source = EXCEL, validado en el servicio)
-  excelUrl            String? // link del Google Sheet
-  excelGid            String? // id de la pestaña específica
-  excelCampaignFilter String? // texto exacto que identifica esta campaña en la columna de campaña
-  excelCampaignColumn String? // nombre/índice de la columna donde buscar (default: header "campaña")
+  // Modelo: una PESTAÑA = una campaña. Se lee la pestaña completa (sin filtrar por columna).
+  excelUrl        String? // link del Google Sheet
+  excelGid        String? // gid de la pestaña (fuente de verdad, estable ante renombrados)
+  excelSheetName  String? // nombre actual de la pestaña (se refresca en cada sync)
+  sheetAccessMode SheetAccessMode @default(PUBLIC_CSV)
 
   //datos de la campaña
   name         String
@@ -147,7 +160,9 @@ model Campaign {
   leads       Int   @default(0)
 
   //datos para ejecutar la actualizacion de leads
-  lastSyncAt DateTime?
+  lastSyncAt     DateTime?
+  lastSyncStatus SyncStatus?
+  lastSyncError  String? // motivo del último fallo de sincronización (visible en la UI)
   createdAt  DateTime  @default(now())
   updatedAt  DateTime  @updatedAt
 
