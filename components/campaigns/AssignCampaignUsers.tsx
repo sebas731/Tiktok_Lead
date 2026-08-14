@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
-import Link from 'next/link'
+import { LinkButton } from '@/components/ui/LinkButton'
 import { Table, type Column } from '@/components/ui/Table'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
@@ -76,7 +76,7 @@ export function AssignCampaignUsers({ campaignId }: { campaignId: string }) {
 
   return (
     <div>
-      <Link href="/dashboard/campaigns" className="text-sm text-text-muted hover:text-text">← Campañas</Link>
+      <LinkButton href="/dashboard/campaigns" variant="ghost">← Campañas</LinkButton>
       <div className="mt-2">
         <PageHeader title="Asignar usuarios a la campaña" description="Supervisores, back y asesores. Cada uno tendrá los permisos de su rol dentro de la campaña." />
       </div>

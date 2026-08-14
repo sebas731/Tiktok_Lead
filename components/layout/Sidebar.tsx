@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import type { Role } from '@/lib/types'
@@ -45,12 +45,21 @@ const NAV_BY_ROLE: Record<Role, NavItem[]> = {
   ],
 }
 
-const linkClass = (active: boolean) =>
-  `flex items-center gap-3 rounded-2xl px-3.5 py-2.5 text-sm font-medium transition-all duration-150 ${
+const STORAGE_KEY = 'sidebar-collapsed'
+
+// ── Estilos de un ítem según estado y modo (expandido / colapsado) ──
+function itemClass(active: boolean, collapsed: boolean): string {
+  if (collapsed) {
+    return `flex items-center justify-center rounded-xl p-2.5 transition-all duration-150 ${
+      active ? 'bg-white/25 text-white' : 'text-white/80 hover:bg-white/12 hover:text-white'
+    }`
+  }
+  return `flex items-center gap-3 rounded-2xl px-3.5 py-2.5 text-sm font-medium transition-all duration-150 ${
     active
       ? 'border-l-[3px] border-brand-red bg-brand-red/10 pl-[calc(0.875rem-3px)] font-semibold text-brand-red'
       : 'text-text-muted hover:bg-black/[0.04] hover:text-text'
   }`
+}
 
 function NavGroup({ item, pathname }: { item: NavItem; pathname: string }) {
   const childActive = item.children?.some((c) => pathname === c.href) ?? false
@@ -59,7 +68,7 @@ function NavGroup({ item, pathname }: { item: NavItem; pathname: string }) {
 
   return (
     <div>
-      <button type="button" onClick={() => setOpen((v) => !v)} className={`w-full ${linkClass(false)}`}>
+      <button type="button" onClick={() => setOpen((v) => !v)} className={`w-full ${itemClass(false, false)}`}>
         {Icon && <Icon />}
         <span className="flex-1 text-left">{item.label}</span>
         <span className={`text-xs transition-transform ${open ? 'rotate-90' : ''}`}>▸</span>
@@ -89,36 +98,84 @@ function NavGroup({ item, pathname }: { item: NavItem; pathname: string }) {
 export function Sidebar({ role, name }: { role: Role; name: string }) {
   const pathname = usePathname()
   const items = NAV_BY_ROLE[role] ?? []
+  const [collapsed, setCollapsed] = useState(false)
+
+  // Persistencia de la preferencia (se lee tras montar para no romper la hidratación).
+  useEffect(() => {
+    setCollapsed(localStorage.getItem(STORAGE_KEY) === '1')
+  }, [])
+  function toggle() {
+    setCollapsed((v) => {
+      const next = !v
+      localStorage.setItem(STORAGE_KEY, next ? '1' : '0')
+      return next
+    })
+  }
+
+  const asideBase =
+    'relative sticky top-3 m-3 flex h-[calc(100vh-1.5rem)] flex-col overflow-hidden rounded-[1.7rem] transition-all duration-200'
+  const asideMode = collapsed
+    ? 'w-[4.75rem] items-stretch bg-gradient-to-b from-brand-red to-brand-red-dk p-2.5 text-white shadow-brand'
+    : 'sidebar-shell w-64 p-4 text-text'
 
   return (
-    <aside className="sidebar-shell relative sticky top-3 m-3 flex h-[calc(100vh-1.5rem)] w-64 flex-col overflow-hidden rounded-[1.7rem] p-4 text-text">
-      <div className="relative z-10 mb-8 flex items-center gap-3 px-2 pt-1">
-        {/* El logo conserva sus colores de marca */}
-        <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-brand-red to-brand-red-dk text-sm font-bold text-white shadow-sm">
+    <aside className={`${asideBase} ${asideMode}`}>
+      {/* Cabecera: logo + toggle */}
+      <div className={`relative z-10 mb-6 flex items-center gap-3 ${collapsed ? 'flex-col' : 'px-2 pt-1'}`}>
+        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-brand-red to-brand-red-dk text-sm font-bold text-white shadow-sm ring-1 ring-white/20">
           CK2
         </div>
-        <div className="min-w-0">
-          <p className="truncate text-sm font-semibold text-text">Grupo CK2</p>
-          <p className="truncate text-xs text-text-muted">{name}</p>
-        </div>
+        {!collapsed && (
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-sm font-semibold text-text">Grupo CK2</p>
+            <p className="truncate text-xs text-text-muted">{name}</p>
+          </div>
+        )}
+        <button
+          type="button"
+          onClick={toggle}
+          aria-label={collapsed ? 'Expandir menú' : 'Encoger menú'}
+          title={collapsed ? 'Expandir' : 'Encoger'}
+          className={`flex h-8 w-8 items-center justify-center rounded-lg text-sm transition ${
+            collapsed ? 'text-white/80 hover:bg-white/15 hover:text-white' : 'text-text-muted hover:bg-black/[0.05] hover:text-text'
+          }`}
+        >
+          {collapsed ? '»' : '«'}
+        </button>
       </div>
+
       <nav className="relative z-10 flex flex-1 flex-col gap-1.5">
         {items.map((item) => {
-          if (item.children) return <NavGroup key={item.label} item={item} pathname={pathname} />
-          const active = pathname === item.href
           const Icon = Icons[item.icon]
+          // Grupos con hijos: en modo colapsado se muestran como un icono que
+          // enlaza a la primera vista (el desplegable solo tiene sentido expandido).
+          if (item.children) {
+            if (collapsed) {
+              const active = item.children.some((c) => pathname === c.href)
+              return (
+                <Link key={item.label} href={item.children[0].href} title={item.label} className={itemClass(active, true)}>
+                  {Icon && <Icon />}
+                </Link>
+              )
+            }
+            return <NavGroup key={item.label} item={item} pathname={pathname} />
+          }
+          const active = pathname === item.href
           return (
-            <Link key={item.href} href={item.href!} className={linkClass(active)}>
+            <Link key={item.href} href={item.href!} title={collapsed ? item.label : undefined} className={itemClass(active, collapsed)}>
               {Icon && <Icon />}
-              {item.label}
+              {!collapsed && item.label}
             </Link>
           )
         })}
       </nav>
-      <div className="relative z-10 mt-2 rounded-2xl border border-border bg-bg px-3.5 py-3 text-xs text-text-muted">
-        <p className="font-semibold text-text">Sistema de Ventas</p>
-        <p className="mt-0.5 text-text-muted">TikTok Leads · CK2</p>
-      </div>
+
+      {!collapsed && (
+        <div className="relative z-10 mt-2 rounded-2xl border border-border bg-bg px-3.5 py-3 text-xs text-text-muted">
+          <p className="font-semibold text-text">Sistema de Ventas</p>
+          <p className="mt-0.5 text-text-muted">TikTok Leads · CK2</p>
+        </div>
+      )}
     </aside>
   )
 }

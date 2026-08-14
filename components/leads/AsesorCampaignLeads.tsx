@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import Link from 'next/link'
+import { LinkButton } from '@/components/ui/LinkButton'
 import { useRouter } from 'next/navigation'
 import { Table, type Column } from '@/components/ui/Table'
 import { Badge, leadStatusTone } from '@/components/ui/Badge'
@@ -52,7 +52,7 @@ export function AsesorCampaignLeads({ campaignId }: { campaignId: string }) {
 
   return (
     <div>
-      <Link href="/dashboard/campaigns" className="text-sm text-text-muted hover:text-text">← Campañas</Link>
+      <LinkButton href="/dashboard/campaigns" variant="ghost">← Campañas</LinkButton>
       <div className="mt-2">
         <PageHeader title={campaignName} description="Tus leads en esta campaña." />
       </div>

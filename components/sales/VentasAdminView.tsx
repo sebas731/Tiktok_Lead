@@ -205,13 +205,11 @@ export function VentasAdminView({ role }: { role: Role }) {
         />
       ) : drilled ? (
         <div>
-          <button
-            type="button"
-            onClick={() => setDrill(null)}
-            className="mb-3 inline-flex items-center gap-1 text-sm font-medium text-brand-red hover:underline"
-          >
-            ← Volver a {view === 'sede' ? 'sedes' : view === 'sala' ? 'salas' : 'campañas'}
-          </button>
+          <div className="mb-3">
+            <Button variant="secondary" onClick={() => setDrill(null)}>
+              ← Volver a {view === 'sede' ? 'sedes' : view === 'sala' ? 'salas' : 'campañas'}
+            </Button>
+          </div>
           <h2 className="mb-3 text-lg font-semibold text-text">
             {drilled.title} <span className="text-sm font-normal text-text-muted">· {drilled.sales.length} venta(s)</span>
           </h2>

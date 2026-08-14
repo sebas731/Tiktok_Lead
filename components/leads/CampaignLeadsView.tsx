@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import Link from 'next/link'
+import { LinkButton } from '@/components/ui/LinkButton'
 import { Table, type Column } from '@/components/ui/Table'
 import { Button } from '@/components/ui/Button'
 import { Select } from '@/components/ui/Select'
@@ -88,7 +88,7 @@ export function CampaignLeadsView({ campaignId, role }: { campaignId: string; ro
 
   return (
     <div>
-      <Link href="/dashboard/campaigns" className="text-sm text-text-muted hover:text-text">← Campañas</Link>
+      <LinkButton href="/dashboard/campaigns" variant="ghost">← Campañas</LinkButton>
       <div className="mt-2">
         <PageHeader
           title="Leads de la campaña"
