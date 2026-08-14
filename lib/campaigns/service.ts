@@ -8,18 +8,14 @@ import { type AuthUser, getCampaignFilter } from '@/lib/auth/authorize'
  * Para el ASESOR el conteo son SOLO sus leads sin gestionar (SIN_GESTION).
  */
 export function listCampaigns(user: AuthUser) {
-  // Para el ASESOR el conteo son sus leads por atender: los asignados a él y,
-  // en campañas de modo AUTO, también los leads sin asignar (pool autoservicio).
+  // Para el ASESOR el conteo son sus leads por atender (asignados y no finales).
   const leadSelect =
     user.role === 'ASESOR'
       ? {
           where: {
+            asignadoAId: user.userId,
             status: { notIn: [LEAD_STATUS.POSITIVO, LEAD_STATUS.NEGATIVO] },
-            OR: [
-              { asignadoAId: user.userId },
-              { campaign: { leadMode: LeadMode.AUTO }, asignadoAId: null },
-            ],
-          } satisfies Prisma.LeadWhereInput,
+          },
         }
       : true
   return prisma.campaign.findMany({

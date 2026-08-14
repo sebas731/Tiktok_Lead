@@ -33,33 +33,24 @@ const leadInclude = {
 
 /**
  * Vista de leads del ASESOR:
- *  - 'pendientes' (bandeja): NORMAL → leads asignados a él y no finales.
- *    AUTO → todos los leads de la campaña sin asignar (pool) + los suyos, no finales.
+ *  - 'pendientes' (bandeja): leads asignados a él y no finales (por atender).
+ *    En modo AUTO los obtiene con el botón "Asignarme" (autoasignación).
  *  - 'historial': leads que él procesó y que NO están asignados a otro asesor
  *    (si se reasignan a otro desaparecen; si vuelven a él, reaparecen).
  */
-async function listAsesorLeads(user: AuthUser, campaignId: string | null, view: 'pendientes' | 'historial') {
+function listAsesorLeads(user: AuthUser, campaignId: string | null, view: 'pendientes' | 'historial') {
   const camp: Prisma.LeadWhereInput = campaignId ? { campaignId } : {}
-
-  let where: Prisma.LeadWhereInput
-  if (view === 'historial') {
-    where = {
-      ...camp,
-      processLogs: { some: { userId: user.userId } },
-      OR: [
-        { asignadoAId: null },
-        { asignadoAId: user.userId, status: { in: FINAL_STATUSES } },
-      ],
-    }
-  } else {
-    const auto =
-      campaignId != null &&
-      (await prisma.campaign.findUnique({ where: { campaign_id: campaignId }, select: { leadMode: true } }))?.leadMode ===
-        'AUTO'
-    where = auto
-      ? { ...camp, status: { notIn: FINAL_STATUSES }, OR: [{ asignadoAId: null }, { asignadoAId: user.userId }] }
+  const where: Prisma.LeadWhereInput =
+    view === 'historial'
+      ? {
+          ...camp,
+          processLogs: { some: { userId: user.userId } },
+          OR: [
+            { asignadoAId: null },
+            { asignadoAId: user.userId, status: { in: FINAL_STATUSES } },
+          ],
+        }
       : { ...camp, asignadoAId: user.userId, status: { notIn: FINAL_STATUSES } }
-  }
   return prisma.lead.findMany({ where, orderBy: { updatedAt: 'desc' }, include: leadInclude })
 }
 
@@ -105,16 +96,7 @@ export async function updateLead(user: AuthUser, id: string, input: Record<strin
   if (typeof input.reason === 'string') data.reason = input.reason
   if (typeof input.name_client === 'string') data.name_client = input.name_client
 
-  if (RETURN_TO_POOL.includes(status)) {
-    data.asignadoA = { disconnect: true }
-  } else if (user.role === 'ASESOR' && lead.asignadoAId !== user.userId) {
-    // En modo AUTO el asesor puede tomar un lead del pool: al gestionarlo, lo
-    // reclama para sí (sale del pool compartido y entra a su historial).
-    const auto =
-      (await prisma.campaign.findUnique({ where: { campaign_id: lead.campaignId }, select: { leadMode: true } }))
-        ?.leadMode === 'AUTO'
-    if (auto) data.asignadoA = { connect: { user_id: user.userId } }
-  }
+  if (RETURN_TO_POOL.includes(status)) data.asignadoA = { disconnect: true }
 
   const [updated] = await prisma.$transaction([
     prisma.lead.update({ where: { id }, data }),
@@ -123,6 +105,44 @@ export async function updateLead(user: AuthUser, id: string, input: Record<strin
     }),
   ])
   return updated
+}
+
+/**
+ * Autoasignación (modo AUTO): el asesor se asigna el lead más nuevo sin asignar
+ * de la campaña. Atómico y a prueba de concurrencia (si otro lo tomó primero,
+ * reintenta). El lead sale del pool y pasa a su bandeja "por atender".
+ */
+export async function selfAssignLead(user: AuthUser, campaignId: string) {
+  if (user.role !== 'ASESOR') throw new HttpError(403, 'Solo los asesores pueden autoasignarse leads')
+  const campaign = await prisma.campaign.findUnique({
+    where: { campaign_id: campaignId },
+    select: { leadMode: true },
+  })
+  if (!campaign) throw new HttpError(404, 'Campaña no encontrada')
+  if (campaign.leadMode !== 'AUTO') throw new HttpError(400, 'La campaña no está en modo automático')
+
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const next = await prisma.lead.findFirst({
+      where: { campaignId, asignadoAId: null, status: { notIn: FINAL_STATUSES } },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], // el más nuevo
+      select: { id: true },
+    })
+    if (!next) throw new HttpError(404, 'No hay leads disponibles para atender en esta campaña')
+
+    // Guardia de concurrencia: solo lo toma si sigue sin asignar.
+    const res = await prisma.lead.updateMany({
+      where: { id: next.id, asignadoAId: null },
+      data: { asignadoAId: user.userId },
+    })
+    if (res.count === 1) {
+      await prisma.leadAssignment.create({
+        data: { leadId: next.id, asesorId: user.userId, asignadoPorId: user.userId },
+      })
+      return prisma.lead.findUnique({ where: { id: next.id }, include: leadInclude })
+    }
+    // otro asesor lo tomó entre el find y el update → reintentar
+  }
+  throw new HttpError(409, 'No se pudo asignar el lead, intenta de nuevo')
 }
 
 /** ADMIN, o SUPERVISOR con esa campaña asignada. */
