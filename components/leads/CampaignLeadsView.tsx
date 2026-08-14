@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { Table, type Column } from '@/components/ui/Table'
 import { Button } from '@/components/ui/Button'
 import { Select } from '@/components/ui/Select'
+import { Tabs } from '@/components/ui/Tabs'
 import { Badge, leadStatusTone } from '@/components/ui/Badge'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { apiGet, apiSend } from '@/lib/api/client'
@@ -18,6 +19,7 @@ export function CampaignLeadsView({ campaignId, role }: { campaignId: string; ro
   const [leads, setLeads] = useState<Lead[]>([])
   const [meId, setMeId] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
+  const [tab, setTab] = useState('sin')
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [assign, setAssign] = useState<{ open: boolean; ids: string[] }>({ open: false, ids: [] })
   const [error, setError] = useState('')
@@ -45,7 +47,16 @@ export function CampaignLeadsView({ campaignId, role }: { campaignId: string; ro
   }
   useEffect(load, [campaignId, statusFilter])
 
-  const sinAsignar = leads.filter((l) => !l.asignadoAId).length
+  // Separación de leads: la bolsa "sin asignar" es la que alimenta "Asignar por
+  // cantidad" (el backend solo toma asignadoAId = null); los asignados van aparte.
+  const sinAsignarLeads = leads.filter((l) => !l.asignadoAId)
+  const asignadosLeads = leads.filter((l) => l.asignadoAId)
+  const rows = tab === 'sin' ? sinAsignarLeads : asignadosLeads
+
+  function changeTab(id: string) {
+    setTab(id)
+    setSelected(new Set())
+  }
 
   function toggle(id: string) {
     setSelected((prev) => {
@@ -81,7 +92,7 @@ export function CampaignLeadsView({ campaignId, role }: { campaignId: string; ro
       <div className="mt-2">
         <PageHeader
           title="Leads de la campaña"
-          description={`${sinAsignar} sin asignar de ${leads.length}`}
+          description={`${sinAsignarLeads.length} sin asignar · ${asignadosLeads.length} asignados`}
           actions={
             canAssign ? (
               <div className="flex flex-wrap gap-2">
@@ -103,6 +114,16 @@ export function CampaignLeadsView({ campaignId, role }: { campaignId: string; ro
           }
         />
       </div>
+      <div className="mb-4">
+        <Tabs
+          tabs={[
+            { id: 'sin', label: `Sin asignar (${sinAsignarLeads.length})` },
+            { id: 'asignados', label: `Leads asignados (${asignadosLeads.length})` },
+          ]}
+          active={tab}
+          onChange={changeTab}
+        />
+      </div>
       <div className="mb-4 w-56">
         <Select
           label="Filtrar por estado"
@@ -113,7 +134,12 @@ export function CampaignLeadsView({ campaignId, role }: { campaignId: string; ro
         />
       </div>
       {error && <p className="mb-4 text-sm text-red-600">{error}</p>}
-      <Table columns={columns} rows={leads} getRowKey={(l) => l.id} emptyMessage="No hay leads." />
+      <Table
+        columns={columns}
+        rows={rows}
+        getRowKey={(l) => l.id}
+        emptyMessage={tab === 'sin' ? 'No hay leads sin asignar.' : 'No hay leads asignados.'}
+      />
       {assign.open && (
         <AssignLeadsModal
           open
