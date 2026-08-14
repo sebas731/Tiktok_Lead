@@ -168,9 +168,10 @@ model Campaign {
   leads       Int   @default(0)
 
   //datos para ejecutar la actualizacion de leads
-  lastSyncAt     DateTime?
-  lastSyncStatus SyncStatus?
-  lastSyncError  String? // motivo del último fallo de sincronización (visible en la UI)
+  lastSyncAt      DateTime?
+  lastSyncStatus  SyncStatus?
+  lastSyncError   String? // motivo del último fallo de sincronización (visible en la UI)
+  lastSyncSummary Json? // resumen de la última sync: leídas, nuevas, existentes, descartadas, errores
   createdAt  DateTime  @default(now())
   updatedAt  DateTime  @updatedAt
 

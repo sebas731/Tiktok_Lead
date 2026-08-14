@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { Select } from '@/components/ui/Select'
 import { apiSend } from '@/lib/api/client'
-import type { Campaign, SheetTab } from '@/lib/types'
+import type { Campaign, CampaignSyncSummary, SheetTab } from '@/lib/types'
 
 type Mode = 'PUBLIC_CSV' | 'SERVICE_ACCOUNT'
 
@@ -29,8 +29,6 @@ const MODE_OPTIONS = [
   { value: 'SERVICE_ACCOUNT', label: 'Privado (Service Account)' },
 ]
 
-type SyncResult = { imported: number; total: number; renamed: { from: string; to: string } | null }
-
 export function ExcelOriginFields({
   excelUrl, setExcelUrl,
   sheetAccessMode, setSheetAccessMode,
@@ -44,6 +42,7 @@ export function ExcelOriginFields({
   const [tabsError, setTabsError] = useState('')
   const [syncing, setSyncing] = useState(false)
   const [syncMsg, setSyncMsg] = useState('')
+  const [summary, setSummary] = useState<CampaignSyncSummary | null>(campaign?.lastSyncSummary ?? null)
 
   async function loadTabs() {
     setLoadingTabs(true)
@@ -69,11 +68,9 @@ export function ExcelOriginFields({
     setSyncing(true)
     setSyncMsg('')
     try {
-      const r = await apiSend<SyncResult>(`/api/campaigns/${campaign.campaign_id}/sync`, 'POST')
-      setSyncMsg(
-        `${r.imported} nuevo(s) de ${r.total}.` +
-          (r.renamed ? ` Pestaña renombrada: "${r.renamed.from}" → "${r.renamed.to}".` : ''),
-      )
+      const r = await apiSend<CampaignSyncSummary>(`/api/campaigns/${campaign.campaign_id}/sync`, 'POST')
+      setSummary(r)
+      setSyncMsg(r.renamed ? `Pestaña renombrada: "${r.renamed.from}" → "${r.renamed.to}".` : '')
       onSynced?.()
     } catch (e) {
       setSyncMsg(e instanceof Error ? e.message : 'Error al sincronizar')
@@ -143,12 +140,29 @@ export function ExcelOriginFields({
           <p className="mt-2 text-text-muted">
             Última: {campaign.lastSyncAt ? new Date(campaign.lastSyncAt).toLocaleString() : 'nunca'}
           </p>
-          {campaign.lastSyncStatus === 'ERROR' ? (
+          {campaign.lastSyncStatus === 'ERROR' && !summary ? (
             <p className="mt-1 text-red-600">Error: {campaign.lastSyncError}</p>
-          ) : campaign.lastSyncStatus === 'OK' ? (
-            <p className="mt-1 text-emerald-700">Última sincronización correcta.</p>
           ) : null}
           {syncMsg && <p className="mt-1 text-text">{syncMsg}</p>}
+
+          {summary && (
+            <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 sm:grid-cols-4">
+              <span className="text-text-muted">Leídas: <b className="text-text">{summary.totalRows}</b></span>
+              <span className="text-emerald-700">Nuevas: <b>{summary.created}</b></span>
+              <span className="text-text-muted">Existentes: <b className="text-text">{summary.existing}</b></span>
+              <span className="text-amber-700">Descartadas: <b>{summary.discarded}</b></span>
+            </div>
+          )}
+          {summary && summary.errors.length > 0 && (
+            <details className="mt-2">
+              <summary className="cursor-pointer text-red-600">{summary.errors.length} fila(s) con error — revisar</summary>
+              <ul className="mt-1 max-h-40 overflow-y-auto text-xs text-red-700">
+                {summary.errors.map((er) => (
+                  <li key={er.row}>Fila {er.row}: {er.reason}</li>
+                ))}
+              </ul>
+            </details>
+          )}
         </div>
       )}
     </div>

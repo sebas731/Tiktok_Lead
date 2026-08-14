@@ -45,8 +45,11 @@ export function CampaignsView({ role }: { role: Role }) {
     setSyncing(c.campaign_id)
     setNotice('')
     try {
-      const r = await apiSend<{ imported: number }>(`/api/campaigns/${c.campaign_id}/sync`, 'POST')
-      setNotice(`"${c.name}": ${r.imported} leads importados.`)
+      const r = await apiSend<{ created: number; existing: number; discarded: number }>(
+        `/api/campaigns/${c.campaign_id}/sync`,
+        'POST',
+      )
+      setNotice(`"${c.name}": ${r.created} nuevos · ${r.existing} existentes · ${r.discarded} descartados.`)
       load()
     } catch (e) {
       setNotice(e instanceof Error ? e.message : 'Error al sincronizar')

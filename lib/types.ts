@@ -34,10 +34,21 @@ export type Campaign = {
   lastSyncAt: string | null
   lastSyncStatus: 'OK' | 'ERROR' | null
   lastSyncError: string | null
+  lastSyncSummary: CampaignSyncSummary | null
   _count?: { lead: number }
 }
 
 export type SheetTab = { gid: number; title: string; index: number }
+
+/** Resumen de una sincronización de leads desde Google Sheets. */
+export type CampaignSyncSummary = {
+  totalRows: number // filas de datos leídas (sin el encabezado)
+  created: number // leads nuevos insertados
+  existing: number // ya existían (omitidos, no se tocan)
+  discarded: number // filas sin teléfono válido o duplicadas en la hoja
+  errors: { row: number; reason: string }[] // fallos individuales con nº de fila
+  renamed: { from: string; to: string } | null
+}
 
 export type Lead = {
   id: string
