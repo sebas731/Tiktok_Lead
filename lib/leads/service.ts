@@ -96,6 +96,11 @@ function availableLeadWhere(campaignId: string, now: Date): Prisma.LeadWhereInpu
   }
 }
 
+/** Cantidad de leads disponibles (pool) para tomar en una campaña. */
+export function countAvailableLeads(campaignId: string): Promise<number> {
+  return prisma.lead.count({ where: availableLeadWhere(campaignId, new Date()) })
+}
+
 /**
  * Procesa (gestiona) un lead. AGENDADO lo reserva 24h para su asesor (queda
  * asignado); NO_CONTACTO lo devuelve al pool con 5h de enfriamiento. Deja

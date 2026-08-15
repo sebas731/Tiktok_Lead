@@ -36,6 +36,7 @@ export function AsesorCampaignLeads({ campaignId }: { campaignId: string }) {
   const [tab, setTab] = useState('pendientes')
   const [detail, setDetail] = useState<Lead | null>(null)
   const [pendingCount, setPendingCount] = useState(0)
+  const [availableCount, setAvailableCount] = useState(0)
   const [notice, setNotice] = useState('')
   const [assigning, setAssigning] = useState(false)
   const [error, setError] = useState('')
@@ -57,6 +58,14 @@ export function AsesorCampaignLeads({ campaignId }: { campaignId: string }) {
       .catch(() => {})
   }
 
+  // Cantidad de leads sin atender (pool disponible) para el label.
+  function refreshAvailable() {
+    apiGet<{ count: number }>(`/api/leads/available?campaignId=${campaignId}`)
+      .then((r) => setAvailableCount(r.count))
+      .catch(() => {})
+  }
+  useEffect(refreshAvailable, [campaignId])
+
   useEffect(() => {
     apiGet<Campaign[]>('/api/campaigns')
       .then((cs) => setCampaign(cs.find((c) => c.campaign_id === campaignId) ?? null))
@@ -75,6 +84,7 @@ export function AsesorCampaignLeads({ campaignId }: { campaignId: string }) {
       setNotice(`Se te asignó el lead ${lead.client_number}.`)
       setTab('pendientes')
       load('pendientes')
+      refreshAvailable()
     } catch (e) {
       setError(e instanceof Error ? e.message : 'No hay leads disponibles')
     } finally {
@@ -128,9 +138,16 @@ export function AsesorCampaignLeads({ campaignId }: { campaignId: string }) {
           description={isAuto ? 'Modo automático: toma el siguiente lead con "Asignarme".' : 'Tus leads en esta campaña.'}
           actions={
             isAuto ? (
-              <Button onClick={selfAssign} loading={assigning} disabled={pendingCount > 0}>
-                Asignarme un lead
-              </Button>
+              <div className="flex items-center gap-3">
+                {pendingCount === 0 && availableCount > 0 && (
+                  <span className="animate-pulse rounded-full bg-emerald-100 px-3 py-1.5 text-sm font-bold text-emerald-700 ring-1 ring-emerald-300">
+                    HAY {availableCount} TOTALES SIN ATENDER →
+                  </span>
+                )}
+                <Button onClick={selfAssign} loading={assigning} disabled={pendingCount > 0}>
+                  Asignarme un lead
+                </Button>
+              </div>
             ) : undefined
           }
         />
@@ -161,7 +178,7 @@ export function AsesorCampaignLeads({ campaignId }: { campaignId: string }) {
         <LeadDetailModal
           lead={detail}
           onClose={() => setDetail(null)}
-          onSaved={() => { load(tab); refreshPending() }}
+          onSaved={() => { load(tab); refreshPending(); refreshAvailable() }}
           onRegisterVenta={() => router.push(`/dashboard/mis-ventas?leadId=${detail.id}&campaignId=${detail.campaignId}`)}
         />
       )}
