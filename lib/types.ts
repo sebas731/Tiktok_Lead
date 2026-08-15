@@ -95,6 +95,17 @@ export type Lead = {
   } | null
   sale?: { id_sale: string } | null
   campaign?: { campaign_id: string; name: string } | null
+  /** Última gestión: quién procesó el lead y lo dejó en el estado actual. */
+  processLogs?: {
+    processedAt: string
+    user: {
+      user_id: string
+      name: string
+      first_last_name?: string
+      second_last_name?: string
+      document_number?: string
+    }
+  }[]
 }
 
 // Los tipos de venta (Client/Sale/SaleDetail/InstallationSchedule) se agregan

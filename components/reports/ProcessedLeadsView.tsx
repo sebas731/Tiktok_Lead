@@ -191,15 +191,15 @@ export function ProcessedLeadsView() {
 
       <div className="mb-4 flex flex-wrap items-end gap-3">
         <div className="w-52">
-          <Select label="Campaña" value={campaignId} onChange={setCampaignId} placeholder="Todas"
+          <Select label="Campaña" value={campaignId} onChange={setCampaignId} placeholder="Todas" clearable
             options={campaigns.map((c) => ({ value: c.campaign_id, label: c.name }))} />
         </div>
         <div className="w-52">
-          <Select label="Asesor" value={asesorId} onChange={setAsesorId} placeholder="Todos"
+          <Select label="Asesor" value={asesorId} onChange={setAsesorId} placeholder="Todos" clearable
             options={asesores.map((a) => ({ value: a.user_id, label: userLabel(a) }))} />
         </div>
         <div className="w-44">
-          <Select label="Estado" value={status} onChange={setStatus} placeholder="Todos" options={STATUS_OPTIONS} />
+          <Select label="Estado" value={status} onChange={setStatus} placeholder="Todos" clearable options={STATUS_OPTIONS} />
         </div>
         <DatePicker label="Desde" value={desde} onChange={setDesde} />
         <DatePicker label="Hasta" value={hasta} onChange={setHasta} />

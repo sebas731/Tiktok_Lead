@@ -11,6 +11,12 @@ type SelectProps = {
   placeholder?: string
   error?: string
   disabled?: boolean
+  /**
+   * Cuando es true, la opción del placeholder es seleccionable (valor "").
+   * Úsalo en filtros para poder volver a "Todos/Todas". En formularios déjalo
+   * en false para forzar una elección real.
+   */
+  clearable?: boolean
 }
 
 export function Select({
@@ -21,6 +27,7 @@ export function Select({
   placeholder,
   error,
   disabled = false,
+  clearable = false,
 }: SelectProps) {
   return (
     <div className="flex flex-col gap-1.5">
@@ -39,7 +46,7 @@ export function Select({
         `}
       >
         {placeholder && (
-          <option value="" disabled>
+          <option value="" disabled={!clearable}>
             {placeholder}
           </option>
         )}

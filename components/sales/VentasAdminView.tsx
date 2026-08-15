@@ -187,7 +187,7 @@ export function VentasAdminView({ role }: { role: Role }) {
           </div>
         )}
         <div className="w-52">
-          <Select label="Estado" value={reason} onChange={setReason} placeholder="Todos" options={SALE_STATUS_OPTIONS} />
+          <Select label="Estado" value={reason} onChange={setReason} placeholder="Todos" clearable options={SALE_STATUS_OPTIONS} />
         </div>
         <DatePicker label="Desde" value={desde} onChange={setDesde} />
         <DatePicker label="Hasta" value={hasta} onChange={setHasta} />

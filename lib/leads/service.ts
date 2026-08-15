@@ -73,6 +73,15 @@ export function listLeads(user: AuthUser, filters: LeadFilters) {
       asignadoA: { select: { user_id: true, name: true, document_number:true,first_last_name:true,second_last_name:true} },
       sale: { select: { id_sale: true } },
       campaign: { select: { campaign_id: true, name: true } },
+      // Última gestión: quién procesó el lead y lo dejó en el estado actual.
+      processLogs: {
+        orderBy: { processedAt: 'desc' },
+        take: 1,
+        select: {
+          processedAt: true,
+          user: { select: { user_id: true, name: true, first_last_name: true, second_last_name: true, document_number: true } },
+        },
+      },
     },
   })
 }

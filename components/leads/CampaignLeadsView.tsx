@@ -84,6 +84,14 @@ export function CampaignLeadsView({ campaignId, role }: { campaignId: string; ro
       render: (l) => <Badge tone={leadStatusTone(l.status)}>{STATUS_LABELS[l.status] ?? l.status}</Badge>,
     },
     { key: 'asesor', header: 'Asesor', render: (l) => (l.asignadoA ? userLabel(l.asignadoA) : '—') },
+    {
+      key: 'procesadoPor',
+      header: 'Procesado por',
+      render: (l) => {
+        const last = l.processLogs?.[0]
+        return last ? userLabel(last.user) : '—'
+      },
+    },
   ]
 
   return (
@@ -130,6 +138,7 @@ export function CampaignLeadsView({ campaignId, role }: { campaignId: string; ro
           value={statusFilter}
           onChange={setStatusFilter}
           placeholder="Todos"
+          clearable
           options={statusOptions}
         />
       </div>
