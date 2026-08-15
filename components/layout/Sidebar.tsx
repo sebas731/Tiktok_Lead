@@ -90,7 +90,17 @@ function NavGroup({ item, pathname }: { item: NavItem; pathname: string }) {
   )
 }
 
-export function Sidebar({ role, name }: { role: Role; name: string }) {
+export function Sidebar({
+  role,
+  name,
+  mobileOpen = false,
+  onClose,
+}: {
+  role: Role
+  name: string
+  mobileOpen?: boolean
+  onClose?: () => void
+}) {
   const pathname = usePathname()
   const items = NAV_BY_ROLE[role] ?? []
   const [collapsed, setCollapsed] = useState(false)
@@ -107,8 +117,11 @@ export function Sidebar({ role, name }: { role: Role; name: string }) {
     })
   }
 
+  // Móvil: drawer fijo que entra/sale con mobileOpen. Escritorio (lg): columna sticky.
   const asideBase =
-    'relative sticky top-3 m-3 flex h-[calc(100vh-1.5rem)] flex-col overflow-hidden rounded-[1.7rem] transition-all duration-200'
+    `fixed top-3 left-3 z-50 flex h-[calc(100vh-1.5rem)] flex-col overflow-hidden rounded-[1.7rem] transition-all duration-200 lg:sticky lg:left-auto lg:m-3 ${
+      mobileOpen ? 'translate-x-0' : '-translate-x-[120%] lg:translate-x-0'
+    }`
   const asideMode = collapsed
     ? 'w-[4.75rem] items-stretch bg-gradient-to-b from-brand-red to-brand-red-dk p-2.5 text-white shadow-brand'
     : 'sidebar-shell w-64 p-4 text-text'
@@ -157,7 +170,13 @@ export function Sidebar({ role, name }: { role: Role; name: string }) {
           }
           const active = pathname === item.href
           return (
-            <Link key={item.href} href={item.href!} title={collapsed ? item.label : undefined} className={itemClass(active, collapsed)}>
+            <Link
+              key={item.href}
+              href={item.href!}
+              title={collapsed ? item.label : undefined}
+              onClick={onClose}
+              className={itemClass(active, collapsed)}
+            >
               {Icon && <Icon />}
               {!collapsed && item.label}
             </Link>

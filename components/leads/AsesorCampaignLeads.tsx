@@ -45,7 +45,7 @@ export function AsesorCampaignLeads({ campaignId }: { campaignId: string }) {
     apiGet<Lead[]>(`/api/leads?campaignId=${campaignId}&view=${t}`)
       .then((data) => {
         setLeads(data)
-        if (t === 'pendientes') setPendingCount(data.length)
+        if (t === 'pendientes') setPendingCount(data.filter((l) => l.status === 'SIN_GESTION').length)
       })
       .catch((e) => setError(e instanceof Error ? e.message : 'Error'))
   }
@@ -54,7 +54,7 @@ export function AsesorCampaignLeads({ campaignId }: { campaignId: string }) {
   // Cuenta de pendientes (para habilitar/deshabilitar "Asignarme").
   function refreshPending() {
     apiGet<Lead[]>(`/api/leads?campaignId=${campaignId}&view=pendientes`)
-      .then((l) => setPendingCount(l.length))
+      .then((l) => setPendingCount(l.filter((x) => x.status === 'SIN_GESTION').length))
       .catch(() => {})
   }
 
