@@ -28,6 +28,7 @@ export function CampaignFormModal({ open, onClose, onSaved, campaign }: Props) {
   const [denomination, setDenomination] = useState(campaign?.denomination ?? '')
   const [status, setStatus] = useState(campaign?.status ?? true)
   const [leadMode, setLeadMode] = useState<'NORMAL' | 'AUTO'>(campaign?.leadMode ?? 'NORMAL')
+  const [allowNoContactoPull, setAllowNoContactoPull] = useState(campaign?.allowNoContactoPull ?? false)
   const [autoSync, setAutoSync] = useState(campaign?.autoSync ?? true)
   const [source, setSource] = useState<'TIKTOK' | 'EXCEL'>(campaign?.source ?? 'TIKTOK')
   const [tiktokCampaignId, setTiktokCampaignId] = useState(campaign?.tiktokCampaignId ?? '')
@@ -59,10 +60,13 @@ export function CampaignFormModal({ open, onClose, onSaved, campaign }: Props) {
       const excelBody = { excelUrl, excelGid, excelSheetName, sheetAccessMode, autoSync }
       const originBody = source === 'TIKTOK' ? tiktokBody : excelBody
 
+      // Solo aplica en modo AUTO; en NORMAL se fuerza false para no dejar el flag colgado.
+      const allowNC = leadMode === 'AUTO' ? allowNoContactoPull : false
+
       if (isEdit && campaign) {
-        await apiSend(`/api/campaigns/${campaign.campaign_id}`, 'PATCH', { name, denomination, status, leadMode, ...originBody })
+        await apiSend(`/api/campaigns/${campaign.campaign_id}`, 'PATCH', { name, denomination, status, leadMode, allowNoContactoPull: allowNC, ...originBody })
       } else {
-        await apiSend('/api/campaigns', 'POST', { name, denomination, source, leadMode, ...originBody })
+        await apiSend('/api/campaigns', 'POST', { name, denomination, source, leadMode, allowNoContactoPull: allowNC, ...originBody })
       }
       onSaved()
       onClose()
@@ -115,6 +119,23 @@ export function CampaignFormModal({ open, onClose, onSaved, campaign }: Props) {
             { value: 'AUTO', label: 'Automático (los asesores atienden todos los leads)' },
           ]}
         />
+
+        {leadMode === 'AUTO' && (
+          <label className="flex items-start gap-2.5 rounded-lg border border-border bg-surface px-3.5 py-3 text-sm">
+            <input
+              type="checkbox"
+              className="mt-0.5"
+              checked={allowNoContactoPull}
+              onChange={(e) => setAllowNoContactoPull(e.target.checked)}
+            />
+            <span>
+              <span className="font-medium text-text">Permitir jalar leads NO_CONTACTO</span>
+              <span className="mt-0.5 block text-text-muted">
+                Los asesores podrán autoasignarse también leads en NO_CONTACTO, ignorando el enfriamiento de 5&nbsp;h.
+              </span>
+            </span>
+          </label>
+        )}
 
         <Select
           label="Origen"

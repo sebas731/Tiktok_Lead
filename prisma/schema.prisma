@@ -160,6 +160,9 @@ model Campaign {
   status       Boolean  @default(true)
   leadMode     LeadMode @default(NORMAL) // NORMAL: asignación manual · AUTO: autoservicio del asesor
   autoSync     Boolean  @default(true) // si la sincronización programada la incluye (solo EXCEL)
+  // Si es true, el autoservicio (modo AUTO) también entrega leads NO_CONTACTO
+  // ignorando el enfriamiento de 5h. Lo habilita admin/supervisor por campaña.
+  allowNoContactoPull Boolean @default(false)
 
   // metricas para el dhasboard
   impressions Int   @default(0)

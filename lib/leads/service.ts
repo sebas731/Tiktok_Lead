@@ -93,21 +93,32 @@ const HOUR = 60 * 60 * 1000
  *  - no finales,
  *  - sin reserva/enfriamiento vigente (reservedUntil vencido o nulo),
  *  - sin asesor, o AGENDADO cuya reserva de 24h ya venció.
+ *
+ * Si `allowNoContacto` es true (campaña que lo habilita), los leads NO_CONTACTO
+ * también entran aunque su enfriamiento de 5h siga vigente.
  */
-function availableLeadWhere(campaignId: string, now: Date): Prisma.LeadWhereInput {
+function availableLeadWhere(campaignId: string, now: Date, allowNoContacto = false): Prisma.LeadWhereInput {
+  const reservaVencida: Prisma.LeadWhereInput[] = [{ reservedUntil: null }, { reservedUntil: { lte: now } }]
+  const asignable: Prisma.LeadWhereInput[] = [{ asignadoAId: null }, { status: LEAD_STATUS.AGENDADO }]
+  if (allowNoContacto) {
+    // NO_CONTACTO se puede jalar sin importar la reserva ni si sigue asignado.
+    reservaVencida.push({ status: LEAD_STATUS.NO_CONTACTO })
+    asignable.push({ status: LEAD_STATUS.NO_CONTACTO })
+  }
   return {
     campaignId,
     status: { notIn: FINAL_STATUSES },
-    AND: [
-      { OR: [{ reservedUntil: null }, { reservedUntil: { lte: now } }] },
-      { OR: [{ asignadoAId: null }, { status: LEAD_STATUS.AGENDADO }] },
-    ],
+    AND: [{ OR: reservaVencida }, { OR: asignable }],
   }
 }
 
 /** Cantidad de leads disponibles (pool) para tomar en una campaña. */
-export function countAvailableLeads(campaignId: string): Promise<number> {
-  return prisma.lead.count({ where: availableLeadWhere(campaignId, new Date()) })
+export async function countAvailableLeads(campaignId: string): Promise<number> {
+  const campaign = await prisma.campaign.findUnique({
+    where: { campaign_id: campaignId },
+    select: { allowNoContactoPull: true },
+  })
+  return prisma.lead.count({ where: availableLeadWhere(campaignId, new Date(), campaign?.allowNoContactoPull ?? false) })
 }
 
 /**
@@ -182,7 +193,7 @@ export async function selfAssignLead(user: AuthUser, campaignId: string) {
   if (user.role !== 'ASESOR') throw new HttpError(403, 'Solo los asesores pueden autoasignarse leads')
   const campaign = await prisma.campaign.findUnique({
     where: { campaign_id: campaignId },
-    select: { leadMode: true },
+    select: { leadMode: true, allowNoContactoPull: true },
   })
   if (!campaign) throw new HttpError(404, 'Campaña no encontrada')
   if (campaign.leadMode !== 'AUTO') throw new HttpError(400, 'La campaña no está en modo automático')
@@ -197,7 +208,7 @@ export async function selfAssignLead(user: AuthUser, campaignId: string) {
 
   for (let attempt = 0; attempt < 3; attempt++) {
     const now = new Date()
-    const pool = availableLeadWhere(campaignId, now)
+    const pool = availableLeadWhere(campaignId, now, campaign.allowNoContactoPull)
     const order = [{ createdAt: 'desc' as const }, { id: 'desc' as const }]
     // Prioridad: primero SIN_GESTION (leads frescos); si no hay, cualquiera disponible.
     let next = await prisma.lead.findFirst({

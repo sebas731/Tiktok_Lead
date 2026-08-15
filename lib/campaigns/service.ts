@@ -32,6 +32,7 @@ export async function createCampaign(input: Record<string, unknown>) {
   if (typeof input.denomination === 'string') data.denomination = input.denomination
   if (typeof input.leadMode === 'string') data.leadMode = requireEnum(input.leadMode, LeadMode, 'leadMode')
   if (typeof input.autoSync === 'boolean') data.autoSync = input.autoSync
+  if (typeof input.allowNoContactoPull === 'boolean') data.allowNoContactoPull = input.allowNoContactoPull
 
   // Validación por origen (a nivel de aplicación, no de base).
   if (source === 'TIKTOK') {
@@ -70,6 +71,7 @@ export async function updateCampaign(id: string, input: Record<string, unknown>)
   if (typeof input.status === 'boolean') data.status = input.status
   if (typeof input.leadMode === 'string') data.leadMode = requireEnum(input.leadMode, LeadMode, 'leadMode')
   if (typeof input.autoSync === 'boolean') data.autoSync = input.autoSync
+  if (typeof input.allowNoContactoPull === 'boolean') data.allowNoContactoPull = input.allowNoContactoPull
 
   if (campaign.source === 'TIKTOK') {
     if (typeof input.tiktokCampaignId === 'string') data.tiktokCampaignId = input.tiktokCampaignId
