@@ -7,10 +7,10 @@ type Ctx = { params: Promise<{ id: string }> }
 
 export async function PATCH(req: NextRequest, { params }: Ctx) {
   try {
-    await requireRole(['ADMIN'])
+    const user = await requireRole(['ADMIN', 'SUPERVISOR'])
     const { id } = await params
     const body = await readJson<Record<string, unknown>>(req)
-    return NextResponse.json(await updateGrupo(id, body))
+    return NextResponse.json(await updateGrupo(user, id, body))
   } catch (e) {
     return errorResponse(e)
   }

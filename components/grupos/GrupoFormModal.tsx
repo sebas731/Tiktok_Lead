@@ -6,11 +6,11 @@ import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { Select } from '@/components/ui/Select'
 import { apiGet, apiSend } from '@/lib/api/client'
-import type { Grupo, Me, Sede } from '@/lib/types'
+import { userLabel, type Grupo, type Me, type Sede } from '@/lib/types'
 
-type Props = { open: boolean; onClose: () => void; onSaved: () => void; grupo?: Grupo | null }
+type Props = { open: boolean; onClose: () => void; onSaved: () => void; grupo?: Grupo | null; isAdmin?: boolean }
 
-export function GrupoFormModal({ open, onClose, onSaved, grupo }: Props) {
+export function GrupoFormModal({ open, onClose, onSaved, grupo, isAdmin = true }: Props) {
   const isEdit = Boolean(grupo)
   const [name, setName] = useState(grupo?.name ?? '')
   const [supervisorId, setSupervisorId] = useState(grupo?.supervisor.user_id ?? '')
@@ -21,10 +21,10 @@ export function GrupoFormModal({ open, onClose, onSaved, grupo }: Props) {
   const [loading, setLoading] = useState(false)
 
   useEffect(() => {
-    if (!open) return
+    if (!open || !isAdmin) return // solo el admin elige supervisor/sede
     apiGet<Me[]>('/api/users?role=SUPERVISOR').then(setSupervisores).catch(() => {})
     apiGet<Sede[]>('/api/sedes').then(setSedes).catch(() => {})
-  }, [open])
+  }, [open, isAdmin])
 
   async function save() {
     setLoading(true)
@@ -50,26 +50,30 @@ export function GrupoFormModal({ open, onClose, onSaved, grupo }: Props) {
       actions={
         <>
           <Button variant="secondary" onClick={onClose}>Cancelar</Button>
-          <Button onClick={save} loading={loading} disabled={!supervisorId || !sedeId}>Guardar</Button>
+          <Button onClick={save} loading={loading} disabled={!name || (isAdmin && (!supervisorId || !sedeId))}>Guardar</Button>
         </>
       }
     >
       <div className="flex flex-col gap-4">
         <Input label="Nombre" value={name} onChange={setName} />
-        <Select
-          label="Supervisor"
-          value={supervisorId}
-          onChange={setSupervisorId}
-          placeholder="Selecciona un supervisor"
-          options={supervisores.map((s) => ({ value: s.user_id, label: s.name }))}
-        />
-        <Select
-          label="Sede"
-          value={sedeId}
-          onChange={setSedeId}
-          placeholder="Selecciona una sede"
-          options={sedes.map((s) => ({ value: s.sede_id, label: `${s.name} (${s.code})` }))}
-        />
+        {isAdmin && (
+          <>
+            <Select
+              label="Supervisor"
+              value={supervisorId}
+              onChange={setSupervisorId}
+              placeholder="Selecciona un supervisor"
+              options={supervisores.map((s) => ({ value: s.user_id, label: userLabel(s) }))}
+            />
+            <Select
+              label="Sede"
+              value={sedeId}
+              onChange={setSedeId}
+              placeholder="Selecciona una sede"
+              options={sedes.map((s) => ({ value: s.sede_id, label: `${s.name} (${s.code})` }))}
+            />
+          </>
+        )}
         {error && <p className="text-sm text-red-600">{error}</p>}
       </div>
     </Modal>

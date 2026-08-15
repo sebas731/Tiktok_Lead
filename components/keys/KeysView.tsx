@@ -80,7 +80,9 @@ export function KeysView() {
       />
       {error && <p className="mb-4 text-sm text-red-600">{error}</p>}
       <Table columns={columns} rows={keys} getRowKey={(k) => k.id} emptyMessage="No hay Keys registradas." />
-      <KeyFormModal open={form.open} keyRow={form.keyRow} onClose={() => setForm({ open: false })} onSaved={load} />
+      {form.open && (
+        <KeyFormModal key={form.keyRow?.id ?? 'new'} open keyRow={form.keyRow} onClose={() => setForm({ open: false })} onSaved={load} />
+      )}
     </div>
   )
 }

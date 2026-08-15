@@ -49,7 +49,7 @@ export function UsersView() {
         onRowClick={(u) => setDetailId(u.user_id)}
         emptyMessage="No hay usuarios."
       />
-      <UserFormModal open={createOpen} user={null} onClose={() => setCreateOpen(false)} onSaved={load} />
+      {createOpen && <UserFormModal open user={null} onClose={() => setCreateOpen(false)} onSaved={load} />}
       {detailId && (
         <UserDetailModal userId={detailId} onClose={() => setDetailId(null)} onChanged={load} />
       )}

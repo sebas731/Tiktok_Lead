@@ -7,9 +7,9 @@ type Ctx = { params: Promise<{ id: string; asesorId: string }> }
 
 export async function DELETE(_req: NextRequest, { params }: Ctx) {
   try {
-    await requireRole(['ADMIN'])
+    const user = await requireRole(['ADMIN', 'SUPERVISOR'])
     const { id, asesorId } = await params
-    return NextResponse.json(await removeMember(id, asesorId))
+    return NextResponse.json(await removeMember(user, id, asesorId))
   } catch (e) {
     return errorResponse(e)
   }

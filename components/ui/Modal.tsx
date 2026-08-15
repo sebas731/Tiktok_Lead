@@ -45,14 +45,9 @@ export function Modal({ open, onClose, title, children, actions, size = 'md' }: 
   if (!mounted) return null
 
   return createPortal(
-    <div
-      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-brand-dark/40 p-4 py-10 backdrop-blur-sm"
-      onClick={onClose}
-    >
-      <div
-        className={`animate-soft-in my-auto w-full ${SIZE[size]} rounded-3xl bg-white shadow-soft-lg`}
-        onClick={(e) => e.stopPropagation()}
-      >
+    // El clic fuera NO cierra (evita perder datos del formulario); se cierra con ✕ o Cancelar.
+    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-brand-dark/40 p-4 py-10 backdrop-blur-sm">
+      <div className={`animate-soft-in my-auto w-full ${SIZE[size]} rounded-3xl bg-white shadow-soft-lg`}>
         <div className="flex items-center justify-between border-b border-gray-200/80 px-5 py-4">
           <h2 className="text-base font-semibold text-gray-900">{title}</h2>
           <button

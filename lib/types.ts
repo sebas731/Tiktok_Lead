@@ -40,6 +40,14 @@ export type Campaign = {
 
 export type SheetTab = { gid: number; title: string; index: number }
 
+/** Fila del reporte de leads procesados por asesor. */
+export type ProcessedByAsesorRow = {
+  asesorId: string
+  asesorName: string
+  total: number
+  byStatus: Record<string, number>
+}
+
 /** Resumen de una sincronización de leads desde Google Sheets. */
 export type CampaignSyncSummary = {
   totalRows: number // filas de datos leídas (sin el encabezado)
@@ -115,4 +123,9 @@ export type KeyRow = {
 /** Nombre completo de un usuario (nombres + apellidos), sin espacios sobrantes. */
 export function fullName(u: Pick<Me, 'name' | 'first_last_name' | 'second_last_name'>): string {
   return [u.name, u.first_last_name, u.second_last_name].filter(Boolean).join(' ').trim() || u.name
+}
+
+/** Etiqueta de usuario/asesor: nombre completo con el DNI entre paréntesis. */
+export function userLabel(u: Pick<Me, 'name' | 'first_last_name' | 'second_last_name' | 'document_number'>): string {
+  return `${fullName(u)} (${u.document_number})`
 }

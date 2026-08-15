@@ -6,7 +6,7 @@ import { Select, type SelectOption } from '@/components/ui/Select'
 import { DatePicker } from '@/components/ui/DatePicker'
 import { apiGet, apiSend } from '@/lib/api/client'
 import { SALE_SECTIONS, CLIENT_FIELD_NAMES } from '@/lib/constants/saleForm'
-import { fullName, type Me, type SaleRow } from '@/lib/types'
+import { userLabel, type Me, type SaleRow } from '@/lib/types'
 import { SaleFieldInput } from './SaleFieldInput'
 
 type SaleFull = { id_sale: string; client: Record<string, unknown>; installation?: Record<string, unknown> | null } & Record<string, unknown>
@@ -46,7 +46,7 @@ export function SaleGlassEditModal({ sale, onClose, onSaved }: Props) {
 
   useEffect(() => {
     apiGet<Me[]>('/api/users?role=SUPERVISOR')
-      .then((u) => setSupervisores(u.map((s) => ({ value: s.user_id, label: fullName(s) }))))
+      .then((u) => setSupervisores(u.map((s) => ({ value: s.user_id, label: userLabel(s) }))))
       .catch(() => {})
     apiGet<SaleFull>(`/api/sales/${sale.id_sale}`)
       .then((d) => {
@@ -101,14 +101,8 @@ export function SaleGlassEditModal({ sale, onClose, onSaved }: Props) {
   if (!mounted) return null
 
   return createPortal(
-    <div
-      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-[#3f0a0f]/55 p-4 py-10 backdrop-blur-sm"
-      onClick={onClose}
-    >
-      <div
-        className="animate-soft-in my-auto w-full max-w-5xl overflow-hidden rounded-3xl border border-white/25 bg-gradient-to-br from-[#a61c28]/90 to-[#6e0f16]/92 text-white shadow-2xl backdrop-blur-2xl"
-        onClick={(e) => e.stopPropagation()}
-      >
+    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-[#3f0a0f]/55 p-4 py-10 backdrop-blur-sm">
+      <div className="animate-soft-in my-auto w-full max-w-5xl overflow-hidden rounded-3xl border border-white/25 bg-gradient-to-br from-[#a61c28]/90 to-[#6e0f16]/92 text-white shadow-2xl backdrop-blur-2xl">
         {/* Cabecera */}
         <div className="flex items-center justify-between border-b border-white/20 bg-white/5 px-6 py-4">
           <div>

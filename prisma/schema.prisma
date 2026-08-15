@@ -238,6 +238,10 @@ model Lead {
   asignadoA   User?   @relation("LeadAsesor", fields: [asignadoAId], references: [user_id])
   asignadoAId String?
 
+  // Control anti-bucle: AGENDADO reserva el lead 24h para su asesor; NO_CONTACTO
+  // enfría el lead 5h antes de poder reasignarse. Vencido, vuelve al pool.
+  reservedUntil DateTime?
+
   // historial de asignaciones, procesos y la venta cerrada
   assignments LeadAssignment[]
   processLogs LeadProcessLog[]

@@ -15,6 +15,7 @@ const NAV_BY_ROLE: Record<Role, NavItem[]> = {
     { href: '/dashboard/campaigns', label: 'Campañas', icon: 'campaigns' },
     { href: '/dashboard/leads', label: 'Leads', icon: 'leads' },
     { href: '/dashboard/ventas', label: 'Ventas', icon: 'ventas' },
+    { href: '/dashboard/reportes', label: 'Leads procesados', icon: 'reportes' },
     { href: '/dashboard/users', label: 'Usuarios', icon: 'users' },
     { href: '/dashboard/sedes', label: 'Sedes', icon: 'sedes' },
     { href: '/dashboard/grupos', label: 'Grupos', icon: 'grupos' },
@@ -26,11 +27,14 @@ const NAV_BY_ROLE: Record<Role, NavItem[]> = {
     { href: '/dashboard/campaigns', label: 'Campañas', icon: 'campaigns' },
     { href: '/dashboard/leads', label: 'Leads', icon: 'leads' },
     { href: '/dashboard/ventas', label: 'Ventas', icon: 'ventas' },
-    { href: '/dashboard/grupos', label: 'Mi grupo', icon: 'grupos' },
+    { href: '/dashboard/reportes', label: 'Leads procesados', icon: 'reportes' },
+    { href: '/dashboard/grupos', label: 'Mis grupos', icon: 'grupos' },
+    { href: '/dashboard/settings', label: 'Configuración', icon: 'settings' },
   ],
   ASESOR: [
     { href: '/dashboard/campaigns', label: 'Campañas', icon: 'campaigns' },
     { href: '/dashboard/mis-ventas', label: 'Mis ventas', icon: 'ventas' },
+    { href: '/dashboard/settings', label: 'Configuración', icon: 'settings' },
   ],
   BACK: [
     {
@@ -42,6 +46,7 @@ const NAV_BY_ROLE: Record<Role, NavItem[]> = {
       ],
     },
     { href: '/dashboard/campaigns', label: 'Campañas', icon: 'campaigns' },
+    { href: '/dashboard/settings', label: 'Configuración', icon: 'settings' },
   ],
 }
 

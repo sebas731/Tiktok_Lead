@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { Select } from '@/components/ui/Select'
 import { apiGet, apiSend } from '@/lib/api/client'
-import type { Me } from '@/lib/types'
+import { userLabel, type Me } from '@/lib/types'
 
 type Props = {
   open: boolean
@@ -75,7 +75,7 @@ export function AssignLeadsModal({ open, onClose, onAssigned, campaignId, leadId
           value={asesorId}
           onChange={setAsesorId}
           placeholder="Selecciona un asesor"
-          options={asesores.map((a) => ({ value: a.user_id, label: `${a.name} — ${a.document_number}` }))}
+          options={asesores.map((a) => ({ value: a.user_id, label: userLabel(a) }))}
         />
         {!manual && (
           <Input label="Cantidad de leads sin asignar" type="number" value={cantidad} onChange={setCantidad} />

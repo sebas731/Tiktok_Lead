@@ -5,7 +5,7 @@ import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { Select } from '@/components/ui/Select'
 import { apiGet, apiSend } from '@/lib/api/client'
-import type { Grupo, Me } from '@/lib/types'
+import { userLabel, type Grupo, type Me } from '@/lib/types'
 
 type Props = { grupo: Grupo; onClose: () => void; onChanged: () => void }
 
@@ -54,7 +54,7 @@ export function GrupoMembersModal({ grupo, onClose, onChanged }: Props) {
               value={asesorId}
               onChange={setAsesorId}
               placeholder="Selecciona"
-              options={asesores.map((a) => ({ value: a.user_id, label: a.name }))}
+              options={asesores.map((a) => ({ value: a.user_id, label: userLabel(a) }))}
             />
           </div>
           <Button onClick={add} disabled={!asesorId}>Agregar</Button>

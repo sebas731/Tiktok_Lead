@@ -6,13 +6,14 @@ import { Button } from '@/components/ui/Button'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { apiGet } from '@/lib/api/client'
-import type { Grupo, Role } from '@/lib/types'
+import type { Grupo, Me, Role } from '@/lib/types'
 import { GrupoFormModal } from './GrupoFormModal'
 import { GrupoMembersModal } from './GrupoMembersModal'
 
 export function GruposView({ role }: { role: Role }) {
   const isAdmin = role === 'ADMIN'
   const [grupos, setGrupos] = useState<Grupo[]>([])
+  const [meId, setMeId] = useState('')
   const [form, setForm] = useState<{ open: boolean; grupo?: Grupo | null }>({ open: false })
   const [members, setMembers] = useState<Grupo | null>(null)
   const [error, setError] = useState('')
@@ -23,6 +24,13 @@ export function GruposView({ role }: { role: Role }) {
       .catch((e) => setError(e instanceof Error ? e.message : 'Error'))
   }
   useEffect(load, [])
+
+  useEffect(() => {
+    if (!isAdmin) apiGet<Me>('/api/auth/me').then((m) => setMeId(m.user_id)).catch(() => {})
+  }, [isAdmin])
+
+  // El supervisor solo gestiona los grupos que él supervisa.
+  const canManage = (g: Grupo) => isAdmin || g.supervisor.user_id === meId
 
   return (
     <div>
@@ -47,7 +55,7 @@ export function GruposView({ role }: { role: Role }) {
                     </span>
                   )}
                 </div>
-                {isAdmin && (
+                {canManage(g) && (
                   <div className="flex gap-1">
                     <Button variant="ghost" onClick={() => setForm({ open: true, grupo: g })}>Editar</Button>
                     <Button variant="ghost" onClick={() => setMembers(g)}>Miembros</Button>
@@ -69,7 +77,17 @@ export function GruposView({ role }: { role: Role }) {
           ))}
         </div>
       )}
-      <GrupoFormModal open={form.open} grupo={form.grupo} onClose={() => setForm({ open: false })} onSaved={load} />
+      {/* Se monta solo al abrir para no arrastrar datos de otro grupo / creación previa. */}
+      {form.open && (
+        <GrupoFormModal
+          key={form.grupo?.grupo_id ?? 'new'}
+          open
+          grupo={form.grupo}
+          isAdmin={isAdmin}
+          onClose={() => setForm({ open: false })}
+          onSaved={load}
+        />
+      )}
       {members && (
         <GrupoMembersModal
           grupo={members}

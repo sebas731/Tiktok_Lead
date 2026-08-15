@@ -14,6 +14,7 @@ export function CampaignsView({ role }: { role: Role }) {
   const router = useRouter()
   const isAdmin = role === 'ADMIN'
   const isAsesor = role === 'ASESOR'
+  const isSupervisor = role === 'SUPERVISOR'
   const [campaigns, setCampaigns] = useState<Campaign[]>([])
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
@@ -106,6 +107,13 @@ export function CampaignsView({ role }: { role: Role }) {
                   )}
                   <Button variant="ghost" onClick={() => toggleStatus(c)}>{c.status ? 'Desactivar' : 'Activar'}</Button>
                   <Button variant="ghost" onClick={() => remove(c)}>Eliminar</Button>
+                </div>
+              )}
+              {isSupervisor && (
+                <div className="mt-4 flex flex-wrap gap-1 border-t border-border pt-3" onClick={stop}>
+                  <Button variant="ghost" onClick={() => router.push(`/dashboard/campaigns/${c.campaign_id}/assign`)}>
+                    Gestionar accesos
+                  </Button>
                 </div>
               )}
             </button>

@@ -1,6 +1,6 @@
 import { prisma } from '@/lib/prisma'
 import { Prisma } from '@/lib/generated/prisma/client'
-import { hashPassword } from '@/lib/auth/password'
+import { comparePassword, hashPassword } from '@/lib/auth/password'
 import { HttpError, requireString } from '@/lib/api/response'
 import {
   type AuthUser,
@@ -8,6 +8,21 @@ import {
   getAccessibleSedeIds,
   getGroupAsesorIds,
 } from '@/lib/auth/authorize'
+
+/** Cada usuario cambia su propia contraseña (verifica la actual). */
+export async function changeOwnPassword(user: AuthUser, input: Record<string, unknown>) {
+  const current = requireString(input.currentPassword, 'currentPassword')
+  const next = requireString(input.newPassword, 'newPassword')
+  if (next.length < 4) throw new HttpError(400, 'La nueva contraseña debe tener al menos 4 caracteres')
+
+  const u = await prisma.user.findUnique({ where: { user_id: user.userId }, select: { password: true } })
+  if (!u) throw new HttpError(404, 'Usuario no encontrado')
+  const ok = await comparePassword(current, u.password)
+  if (!ok) throw new HttpError(400, 'La contraseña actual no es correcta')
+
+  await prisma.user.update({ where: { user_id: user.userId }, data: { password: await hashPassword(next) } })
+  return { changed: true }
+}
 
 /** Campos públicos de un usuario. NUNCA incluye `password`. */
 export const publicUserSelect = {

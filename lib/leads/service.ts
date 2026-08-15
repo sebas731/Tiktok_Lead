@@ -75,13 +75,29 @@ export function listLeads(user: AuthUser, filters: LeadFilters) {
   })
 }
 
-// Estados no finales que, al procesarse, devuelven el lead al pool para reproceso.
-const RETURN_TO_POOL: string[] = [LEAD_STATUS.AGENDADO, LEAD_STATUS.NO_CONTACTO]
+const HOUR = 60 * 60 * 1000
 
 /**
- * Procesa (gestiona) un lead: actualiza estado/observaciones, deja rastro en
- * LeadProcessLog y, si queda AGENDADO o NO_CONTACTO, lo devuelve al pool
- * (sin asesor) para que se reprocese junto a los SIN_GESTION.
+ * Leads que se pueden tomar del pool ahora mismo:
+ *  - no finales,
+ *  - sin reserva/enfriamiento vigente (reservedUntil vencido o nulo),
+ *  - sin asesor, o AGENDADO cuya reserva de 24h ya venció.
+ */
+function availableLeadWhere(campaignId: string, now: Date): Prisma.LeadWhereInput {
+  return {
+    campaignId,
+    status: { notIn: FINAL_STATUSES },
+    AND: [
+      { OR: [{ reservedUntil: null }, { reservedUntil: { lte: now } }] },
+      { OR: [{ asignadoAId: null }, { status: LEAD_STATUS.AGENDADO }] },
+    ],
+  }
+}
+
+/**
+ * Procesa (gestiona) un lead. AGENDADO lo reserva 24h para su asesor (queda
+ * asignado); NO_CONTACTO lo devuelve al pool con 5h de enfriamiento. Deja
+ * rastro en LeadProcessLog.
  */
 export async function updateLead(user: AuthUser, id: string, input: Record<string, unknown>) {
   const lead = await getVisibleLead(user, id)
@@ -96,7 +112,14 @@ export async function updateLead(user: AuthUser, id: string, input: Record<strin
   if (typeof input.reason === 'string') data.reason = input.reason
   if (typeof input.name_client === 'string') data.name_client = input.name_client
 
-  if (RETURN_TO_POOL.includes(status)) data.asignadoA = { disconnect: true }
+  if (status === LEAD_STATUS.NO_CONTACTO) {
+    // Vuelve al pool, pero con 5h de enfriamiento (no se reasigna en ese lapso).
+    data.asignadoA = { disconnect: true }
+    data.reservedUntil = new Date(Date.now() + 5 * HOUR)
+  } else if (status === LEAD_STATUS.AGENDADO) {
+    // Se reserva 24h para el mismo asesor (sigue asignado).
+    data.reservedUntil = new Date(Date.now() + 24 * HOUR)
+  }
 
   const [updated] = await prisma.$transaction([
     prisma.lead.update({ where: { id }, data }),
@@ -130,17 +153,24 @@ export async function selfAssignLead(user: AuthUser, campaignId: string) {
   }
 
   for (let attempt = 0; attempt < 3; attempt++) {
-    const next = await prisma.lead.findFirst({
-      where: { campaignId, asignadoAId: null, status: { notIn: FINAL_STATUSES } },
-      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], // el más nuevo
-      select: { id: true },
+    const now = new Date()
+    const pool = availableLeadWhere(campaignId, now)
+    const order = [{ createdAt: 'desc' as const }, { id: 'desc' as const }]
+    // Prioridad: primero SIN_GESTION (leads frescos); si no hay, cualquiera disponible.
+    let next = await prisma.lead.findFirst({
+      where: { ...pool, status: LEAD_STATUS.SIN_GESTION },
+      orderBy: order,
+      select: { id: true, asignadoAId: true },
     })
+    if (!next) {
+      next = await prisma.lead.findFirst({ where: pool, orderBy: order, select: { id: true, asignadoAId: true } })
+    }
     if (!next) throw new HttpError(404, 'No hay leads disponibles para atender en esta campaña')
 
-    // Guardia de concurrencia: solo lo toma si sigue sin asignar.
+    // Guardia de concurrencia: solo lo toma si sigue en el estado que vimos.
     const res = await prisma.lead.updateMany({
-      where: { id: next.id, asignadoAId: null },
-      data: { asignadoAId: user.userId },
+      where: { id: next.id, asignadoAId: next.asignadoAId },
+      data: { asignadoAId: user.userId, reservedUntil: null },
     })
     if (res.count === 1) {
       await prisma.leadAssignment.create({
@@ -222,19 +252,35 @@ export async function assignLeads(user: AuthUser, input: AssignLeadsInput) {
       throw new HttpError(400, 'Algunos leads no pertenecen a esa campaña')
     }
   } else if (typeof input.cantidad === 'number' && input.cantidad > 0) {
-    const libres = await prisma.lead.findMany({
-      where: { campaignId, asignadoAId: null },
+    // Pool con enfriamiento/reserva respetados. Prioridad: primero SIN_GESTION.
+    const now = new Date()
+    const pool = availableLeadWhere(campaignId, now)
+    const order = [{ createdAt: 'desc' as const }, { id: 'desc' as const }]
+    const frescos = await prisma.lead.findMany({
+      where: { ...pool, status: LEAD_STATUS.SIN_GESTION },
       take: input.cantidad,
+      orderBy: order,
       select: { id: true },
     })
-    if (libres.length === 0) throw new HttpError(400, 'No hay leads sin asignar en esa campaña')
-    leadIds = libres.map((l) => l.id)
+    leadIds = frescos.map((l) => l.id)
+    if (leadIds.length < input.cantidad) {
+      const resto = await prisma.lead.findMany({
+        where: { ...pool, id: { notIn: leadIds } },
+        take: input.cantidad - leadIds.length,
+        orderBy: order,
+        select: { id: true },
+      })
+      leadIds = leadIds.concat(resto.map((l) => l.id))
+    }
+    if (leadIds.length === 0) {
+      throw new HttpError(400, 'No hay leads disponibles (revisa reservas de agendados y enfriamientos de no-contacto)')
+    }
   } else {
     throw new HttpError(400, 'Debes enviar leadIds (array) o cantidad (número > 0)')
   }
 
   await prisma.$transaction([
-    prisma.lead.updateMany({ where: { id: { in: leadIds } }, data: { asignadoAId: asesorId } }),
+    prisma.lead.updateMany({ where: { id: { in: leadIds } }, data: { asignadoAId: asesorId, reservedUntil: null } }),
     prisma.leadAssignment.createMany({
       data: leadIds.map((leadId) => ({ leadId, asesorId, asignadoPorId: user.userId })),
     }),

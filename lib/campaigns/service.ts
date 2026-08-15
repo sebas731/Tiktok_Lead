@@ -120,8 +120,17 @@ const ASSIGN_INCLUDE = {
   user: { select: { user_id: true, name: true, document_number: true, rol: { select: { name: true } } } },
 } satisfies Prisma.CampaignAssignmentInclude
 
+/** ADMIN gestiona cualquier campaña; el SUPERVISOR solo las que supervisa. */
+async function assertCanManageCampaignUsers(actor: AuthUser, campaignId: string) {
+  if (actor.role === 'ADMIN') return
+  if (actor.role !== 'SUPERVISOR') throw new HttpError(403, 'No tienes permiso para gestionar usuarios de campañas')
+  const assigned = await prisma.campaignAssignment.count({ where: { campaignId, userId: actor.userId } })
+  if (assigned === 0) throw new HttpError(403, 'No supervisas esa campaña')
+}
+
 /** Usuarios actualmente asignados a la campaña. */
-export function listCampaignUsers(campaignId: string) {
+export async function listCampaignUsers(actor: AuthUser, campaignId: string) {
+  await assertCanManageCampaignUsers(actor, campaignId)
   return prisma.campaignAssignment.findMany({ where: { campaignId }, include: ASSIGN_INCLUDE })
 }
 
@@ -129,7 +138,8 @@ export function listCampaignUsers(campaignId: string) {
  * Asigna un usuario (SUPERVISOR, BACK o ASESOR) a una campaña. El rol define
  * sus permisos dentro de la campaña. Idempotente.
  */
-export async function assignUserToCampaign(campaignId: string, userId: string) {
+export async function assignUserToCampaign(actor: AuthUser, campaignId: string, userId: string) {
+  await assertCanManageCampaignUsers(actor, campaignId)
   const user = await prisma.user.findFirst({
     where: { user_id: userId, rol: { name: { in: ['SUPERVISOR', 'BACK', 'ASESOR'] } } },
     select: { user_id: true },
@@ -140,11 +150,12 @@ export async function assignUserToCampaign(campaignId: string, userId: string) {
     create: { campaignId, userId },
     update: {},
   })
-  return listCampaignUsers(campaignId)
+  return listCampaignUsers(actor, campaignId)
 }
 
-/** Quita un usuario de la campaña. */
-export async function removeCampaignUser(campaignId: string, userId: string) {
+/** Quita (deniega) el acceso de un usuario a la campaña. */
+export async function removeCampaignUser(actor: AuthUser, campaignId: string, userId: string) {
+  await assertCanManageCampaignUsers(actor, campaignId)
   await prisma.campaignAssignment.deleteMany({ where: { campaignId, userId } })
   return { removed: true }
 }

@@ -10,7 +10,7 @@ import { apiGet, apiSend } from '@/lib/api/client'
 
 type Branding = { title: string; subtitle: string; logoUrl: string | null; sideImageUrl: string | null }
 
-export function BrandingView() {
+export function BrandingView({ embedded = false }: { embedded?: boolean }) {
   const [b, setB] = useState<Branding>({ title: '', subtitle: '', logoUrl: null, sideImageUrl: null })
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState('')
@@ -36,7 +36,8 @@ export function BrandingView() {
 
   return (
     <div>
-      <PageHeader title="Configuración" description="Personaliza la pantalla de login." />
+      {!embedded && <PageHeader title="Configuración" description="Personaliza la pantalla de login." />}
+      {embedded && <h2 className="mb-3 text-base font-semibold text-text">Personalización del login</h2>}
       <Card className="max-w-xl">
         <div className="flex flex-col gap-4">
           <Input label="Título" value={b.title} onChange={(v) => setB({ ...b, title: v })} />

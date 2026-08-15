@@ -1,13 +1,12 @@
 import { redirect } from 'next/navigation'
 import { getSession } from '@/lib/auth/session'
-import { AssignCampaignUsers } from '@/components/campaigns/AssignCampaignUsers'
+import { ProcessedLeadsView } from '@/components/reports/ProcessedLeadsView'
 import type { Role } from '@/lib/types'
 
-export default async function AssignCampaignPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function ReportesPage() {
   const session = await getSession()
   if (!session) return null
   const role = session.role as Role
   if (role !== 'ADMIN' && role !== 'SUPERVISOR') redirect('/dashboard')
-  const { id } = await params
-  return <AssignCampaignUsers campaignId={id} />
+  return <ProcessedLeadsView />
 }

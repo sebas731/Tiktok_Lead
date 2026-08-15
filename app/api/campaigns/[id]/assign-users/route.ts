@@ -7,9 +7,9 @@ type Ctx = { params: Promise<{ id: string }> }
 
 export async function GET(_req: NextRequest, { params }: Ctx) {
   try {
-    await requireRole(['ADMIN'])
+    const user = await requireRole(['ADMIN', 'SUPERVISOR'])
     const { id } = await params
-    return NextResponse.json(await listCampaignUsers(id))
+    return NextResponse.json(await listCampaignUsers(user, id))
   } catch (e) {
     return errorResponse(e)
   }
@@ -17,10 +17,10 @@ export async function GET(_req: NextRequest, { params }: Ctx) {
 
 export async function POST(req: NextRequest, { params }: Ctx) {
   try {
-    await requireRole(['ADMIN'])
+    const user = await requireRole(['ADMIN', 'SUPERVISOR'])
     const { id } = await params
     const body = await readJson<{ userId?: unknown }>(req)
-    return NextResponse.json(await assignUserToCampaign(id, requireString(body.userId, 'userId')))
+    return NextResponse.json(await assignUserToCampaign(user, id, requireString(body.userId, 'userId')))
   } catch (e) {
     return errorResponse(e)
   }

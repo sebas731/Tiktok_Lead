@@ -53,7 +53,9 @@ export function SedesView() {
       />
       {error && <p className="mb-4 text-sm text-red-600">{error}</p>}
       <Table columns={columns} rows={sedes} getRowKey={(s) => s.sede_id} emptyMessage="No hay sedes." />
-      <SedeFormModal open={form.open} sede={form.sede} onClose={() => setForm({ open: false })} onSaved={load} />
+      {form.open && (
+        <SedeFormModal key={form.sede?.sede_id ?? 'new'} open sede={form.sede} onClose={() => setForm({ open: false })} onSaved={load} />
+      )}
       {accessId && <SedeAccessModal sedeId={accessId} onClose={() => setAccessId(null)} />}
     </div>
   )

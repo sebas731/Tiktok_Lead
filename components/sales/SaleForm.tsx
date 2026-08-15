@@ -6,7 +6,7 @@ import { Select, type SelectOption } from '@/components/ui/Select'
 import { FormSection } from '@/components/forms/FormSection'
 import { apiGet, apiSend } from '@/lib/api/client'
 import { SALE_SECTIONS, defaultSaleValues } from '@/lib/constants/saleForm'
-import { fullName, type Campaign, type Me } from '@/lib/types'
+import { userLabel, type Campaign, type Me } from '@/lib/types'
 import { SaleFieldInput } from './SaleFieldInput'
 
 type Props = { leadId?: string; campaignId?: string; onSaved: () => void; onCancel: () => void }
@@ -22,7 +22,7 @@ export function SaleForm({ leadId, campaignId, onSaved, onCancel }: Props) {
   useEffect(() => {
     apiGet<Campaign[]>('/api/campaigns').then(setCampaigns).catch(() => {})
     apiGet<Me[]>('/api/users?role=SUPERVISOR')
-      .then((u) => setSupervisores(u.map((s) => ({ value: s.user_id, label: fullName(s) }))))
+      .then((u) => setSupervisores(u.map((s) => ({ value: s.user_id, label: userLabel(s) }))))
       .catch(() => {})
   }, [])
 
