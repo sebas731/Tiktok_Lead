@@ -119,15 +119,18 @@ const HOUR = 60 * 60 * 1000
  *  - sin asesor, o AGENDADO cuya reserva de 24h ya venció.
  *
  * Si `allowNoContacto` es true (campaña que lo habilita), los leads NO_CONTACTO
- * también entran aunque su enfriamiento de 5h siga vigente.
+ * que YA volvieron al pool (sin asesor) entran aunque su enfriamiento de 5h siga
+ * vigente. Nunca se toma un NO_CONTACTO que sigue asignado a un asesor: si aún lo
+ * tiene en mano (lo está tipificando), no debe poder jalarlo otro.
  */
 function availableLeadWhere(campaignId: string, now: Date, allowNoContacto = false): Prisma.LeadWhereInput {
   const reservaVencida: Prisma.LeadWhereInput[] = [{ reservedUntil: null }, { reservedUntil: { lte: now } }]
   const asignable: Prisma.LeadWhereInput[] = [{ asignadoAId: null }, { status: LEAD_STATUS.AGENDADO }]
   if (allowNoContacto) {
-    // NO_CONTACTO se puede jalar sin importar la reserva ni si sigue asignado.
+    // Solo se salta el ENFRIAMIENTO (reservedUntil) de los NO_CONTACTO ya
+    // liberados al pool; NO se salta la asignación (los que están asignados,
+    // porque un asesor los tiene en mano, quedan fuera vía `asignable`).
     reservaVencida.push({ status: LEAD_STATUS.NO_CONTACTO })
-    asignable.push({ status: LEAD_STATUS.NO_CONTACTO })
   }
   return {
     campaignId,
