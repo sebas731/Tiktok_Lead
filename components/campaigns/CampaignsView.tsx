@@ -94,7 +94,7 @@ export function CampaignsView({ role }: { role: Role }) {
               <div className="mt-auto flex items-end justify-between">
                 <div>
                   <p className="text-3xl font-semibold text-text">{c._count?.lead ?? 0}</p>
-                  <p className="text-xs text-text-muted">{isAsesor ? 'por atender' : 'leads'}</p>
+                  <p className="text-xs text-text-muted">{isAsesor ? 'por atender' : 'activos'}</p>
                 </div>
                 <Badge tone={c.status ? 'positivo' : 'neutral'}>{c.status ? 'Activa' : 'Inactiva'}</Badge>
               </div>

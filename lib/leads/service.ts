@@ -2,6 +2,8 @@ import { prisma } from '@/lib/prisma'
 import { Prisma, LEAD_STATUS, LEAD_SUBSTATUS } from '@/lib/generated/prisma/client'
 import { HttpError, requireEnum, requireString } from '@/lib/api/response'
 import { type AuthUser, getLeadFilter } from '@/lib/auth/authorize'
+import { writeLeadStatusToSheet } from '@/lib/services/googleSheets'
+import { STATUS_LABELS, SUBSTATUS_LABELS } from '@/lib/constants/leads'
 
 /** Devuelve el lead si es visible para el usuario; si no, lanza 404. */
 export async function getVisibleLead(user: AuthUser, id: string) {
@@ -68,7 +70,7 @@ export function listLeads(user: AuthUser, filters: LeadFilters) {
     where: { AND: [getLeadFilter(user), extra] },
     orderBy: { id: 'asc' },
     include: {
-      asignadoA: { select: { user_id: true, name: true } },
+      asignadoA: { select: { user_id: true, name: true, document_number:true,first_last_name:true,second_last_name:true} },
       sale: { select: { id_sale: true } },
       campaign: { select: { campaign_id: true, name: true } },
     },
@@ -127,7 +129,34 @@ export async function updateLead(user: AuthUser, id: string, input: Record<strin
       data: { leadId: id, userId: user.userId, status, sub_status: subStatus, observations },
     }),
   ])
+
+  // Write-back al Sheet en SEGUNDO PLANO: no se espera ni puede romper/retrasar
+  // la gestión. Si el Sheet no es escribible o falla, el lead ya quedó guardado.
+  void syncLeadStatusToSheet(lead.campaignId, lead.client_number, status, subStatus)
+
   return updated
+}
+
+/** Escribe estado/sub-estado en el Sheet (best-effort). Nunca lanza. */
+async function syncLeadStatusToSheet(campaignId: string, clientNumber: string, status: string, subStatus: string) {
+  try {
+    const camp = await prisma.campaign.findUnique({
+      where: { campaign_id: campaignId },
+      select: { source: true, sheetAccessMode: true, excelUrl: true, excelGid: true, excelSheetName: true },
+    })
+    if (camp?.source !== 'EXCEL' || camp.sheetAccessMode !== 'SERVICE_ACCOUNT' || !camp.excelUrl || !camp.excelGid) return
+    await writeLeadStatusToSheet({
+      url: camp.excelUrl,
+      mode: 'SERVICE_ACCOUNT',
+      gid: camp.excelGid,
+      sheetTitle: camp.excelSheetName,
+      clientNumber,
+      estado: STATUS_LABELS[status] ?? status,
+      subEstado: SUBSTATUS_LABELS[subStatus] ?? subStatus,
+    })
+  } catch {
+    // Silencioso: el Sheet no debe afectar el funcionamiento del sistema.
+  }
 }
 
 /**

@@ -9,7 +9,11 @@ export type ProcessedFilters = {
   desde?: string | null
   hasta?: string | null
   asesorId?: string | null
+  status?: string | null
 }
+
+const fullName = (u: { name: string; first_last_name?: string | null; second_last_name?: string | null }) =>
+  [u.name, u.first_last_name, u.second_last_name].filter(Boolean).join(' ').trim() || u.name
 
 /** Construye el filtro de LeadProcessLog según rol y filtros (scoping común). */
 function buildProcessedWhere(user: AuthUser, f: ProcessedFilters): Prisma.LeadProcessLogWhereInput {
@@ -24,6 +28,7 @@ function buildProcessedWhere(user: AuthUser, f: ProcessedFilters): Prisma.LeadPr
   if (f.campaignId) leadWhere.campaignId = f.campaignId
   if (Object.keys(leadWhere).length > 0) where.lead = leadWhere
   if (f.asesorId) where.userId = f.asesorId
+  if (f.status) where.status = f.status as Prisma.LeadProcessLogWhereInput['status']
   if (f.desde || f.hasta) {
     where.processedAt = {}
     if (f.desde) where.processedAt.gte = new Date(f.desde)
@@ -51,7 +56,7 @@ export async function leadsProcessedByAsesor(user: AuthUser, f: ProcessedFilters
 
   const map = new Map<string, ProcessedByAsesorRow>()
   for (const g of grouped) {
-    const row = map.get(g.userId) ?? { asesorId: g.userId, asesorName: '', total: 0, byStatus: {} }
+    const row = map.get(g.userId) ?? { asesorId: g.userId, asesorName: '', asesorDni: '', total: 0, byStatus: {} }
     const n = g._count._all
     row.byStatus[g.status] = (row.byStatus[g.status] ?? 0) + n
     row.total += n
@@ -60,17 +65,26 @@ export async function leadsProcessedByAsesor(user: AuthUser, f: ProcessedFilters
 
   const ids = [...map.keys()]
   if (ids.length === 0) return []
-  const users = await prisma.user.findMany({ where: { user_id: { in: ids } }, select: { user_id: true, name: true } })
-  const names = new Map(users.map((u) => [u.user_id, u.name]))
-  for (const [id, row] of map) row.asesorName = names.get(id) ?? '—'
+  const users = await prisma.user.findMany({
+    where: { user_id: { in: ids } },
+    select: { user_id: true, name: true, first_last_name: true, second_last_name: true, document_number: true },
+  })
+  const byId = new Map(users.map((u) => [u.user_id, u]))
+  for (const [id, row] of map) {
+    const u = byId.get(id)
+    row.asesorName = u ? fullName(u) : '—'
+    row.asesorDni = u?.document_number ?? '—'
+  }
 
   return [...map.values()].sort((a, b) => b.total - a.total)
 }
 
-/** Detalle: gestiones (leads procesados) de un asesor, con su lead y campaña. */
+/**
+ * Detalle de gestiones (leads procesados), con lead, campaña y asesor.
+ * Si `asesorId` viene, es el detalle de ese asesor; si no, es la vista plana
+ * (todas las gestiones filtrables por asesor/estado/campaña/fecha).
+ */
 export async function processedLeadDetail(user: AuthUser, f: ProcessedFilters): Promise<ProcessedDetailRow[]> {
-  const asesorId = f.asesorId
-  if (!asesorId) throw new HttpError(400, 'Falta el asesor')
   const where = buildProcessedWhere(user, f)
 
   const logs = await prisma.leadProcessLog.findMany({
@@ -84,6 +98,7 @@ export async function processedLeadDetail(user: AuthUser, f: ProcessedFilters): 
       sub_status: true,
       observations: true,
       lead: { select: { client_number: true, campaign: { select: { name: true } } } },
+      user: { select: { name: true, first_last_name: true, second_last_name: true, document_number: true } },
     },
   })
 
@@ -95,5 +110,7 @@ export async function processedLeadDetail(user: AuthUser, f: ProcessedFilters): 
     observations: l.observations,
     leadNumber: l.lead.client_number,
     campaignName: l.lead.campaign.name,
+    asesorName: fullName(l.user),
+    asesorDni: l.user.document_number,
   }))
 }

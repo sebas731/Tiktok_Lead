@@ -11,12 +11,17 @@ const grupoInclude = {
   },
 } satisfies Prisma.GrupoInclude
 
-/** ADMIN y BACK ven todos; SUPERVISOR ve todas las salas de su(s) sede(s). */
+/**
+ * ADMIN y BACK ven todos; el SUPERVISOR ve los grupos que supervisa (siempre,
+ * aunque no tenga sede asignada) y además las salas de su(s) sede(s).
+ */
 export async function listGrupos(user: AuthUser) {
   const seeAll = user.role === 'ADMIN' || user.role === 'BACK'
-  const where: Prisma.GrupoWhereInput = seeAll
-    ? {}
-    : { sedeId: { in: await getAccessibleSedeIds(user) } }
+  let where: Prisma.GrupoWhereInput = {}
+  if (!seeAll) {
+    const sedeIds = await getAccessibleSedeIds(user)
+    where = { OR: [{ supervisorId: user.userId }, { sedeId: { in: sedeIds } }] }
+  }
   return prisma.grupo.findMany({ where, orderBy: { createdAt: 'desc' }, include: grupoInclude })
 }
 

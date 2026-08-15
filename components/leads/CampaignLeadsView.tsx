@@ -10,7 +10,7 @@ import { Badge, leadStatusTone } from '@/components/ui/Badge'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { apiGet, apiSend } from '@/lib/api/client'
 import { STATUS_LABELS, STATUS_OPTIONS } from '@/lib/constants/leads'
-import type { Lead, Me, Role } from '@/lib/types'
+import { userLabel, type Lead, type Me, type Role } from '@/lib/types'
 import { AssignLeadsModal } from './AssignLeadsModal'
 
 export function CampaignLeadsView({ campaignId, role }: { campaignId: string; role: Role }) {
@@ -83,7 +83,7 @@ export function CampaignLeadsView({ campaignId, role }: { campaignId: string; ro
       header: 'Estado',
       render: (l) => <Badge tone={leadStatusTone(l.status)}>{STATUS_LABELS[l.status] ?? l.status}</Badge>,
     },
-    { key: 'asesor', header: 'Asesor', render: (l) => l.asignadoA?.name ?? '—' },
+    { key: 'asesor', header: 'Asesor', render: (l) => (l.asignadoA ? userLabel(l.asignadoA) : '—') },
   ]
 
   return (

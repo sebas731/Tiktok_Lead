@@ -44,6 +44,7 @@ export type SheetTab = { gid: number; title: string; index: number }
 export type ProcessedByAsesorRow = {
   asesorId: string
   asesorName: string
+  asesorDni: string
   total: number
   byStatus: Record<string, number>
 }
@@ -57,6 +58,8 @@ export type ProcessedDetailRow = {
   observations: string | null
   leadNumber: string
   campaignName: string
+  asesorName: string
+  asesorDni: string
 }
 
 /** Resumen de una sincronización de leads desde Google Sheets. */
@@ -79,7 +82,13 @@ export type Lead = {
   reason: string
   campaignId: string
   asignadoAId: string | null
-  asignadoA?: { user_id: string; name: string } | null
+  asignadoA?: {
+    user_id: string
+    name: string
+    first_last_name?: string
+    second_last_name?: string
+    document_number?: string
+  } | null
   sale?: { id_sale: string } | null
   campaign?: { campaign_id: string; name: string } | null
 }
@@ -131,12 +140,14 @@ export type KeyRow = {
   campaignCount: number
 }
 
+type NameParts = { name: string; first_last_name?: string; second_last_name?: string }
+
 /** Nombre completo de un usuario (nombres + apellidos), sin espacios sobrantes. */
-export function fullName(u: Pick<Me, 'name' | 'first_last_name' | 'second_last_name'>): string {
+export function fullName(u: NameParts): string {
   return [u.name, u.first_last_name, u.second_last_name].filter(Boolean).join(' ').trim() || u.name
 }
 
 /** Etiqueta de usuario/asesor: nombre completo con el DNI entre paréntesis. */
-export function userLabel(u: Pick<Me, 'name' | 'first_last_name' | 'second_last_name' | 'document_number'>): string {
-  return `${fullName(u)} (${u.document_number})`
+export function userLabel(u: NameParts & { document_number?: string }): string {
+  return u.document_number ? `${fullName(u)} (${u.document_number})` : fullName(u)
 }

@@ -32,7 +32,7 @@ function getSheetsClient(): sheets_v4.Sheets {
   const auth = new google.auth.JWT({
     email: SA_EMAIL,
     key,
-    scopes: ['https://www.googleapis.com/auth/spreadsheets.readonly'],
+    scopes: ['https://www.googleapis.com/auth/spreadsheets'], // lectura + escritura (write-back de estado)
   })
   return google.sheets({ version: 'v4', auth })
 }
@@ -152,4 +152,94 @@ export async function readSheetRows(opts: ReadRowsOpts): Promise<string[][]> {
   return opts.mode === 'SERVICE_ACCOUNT'
     ? readViaServiceAccount(opts.url, opts.sheetTitle)
     : readViaPublicCsv(opts.url, opts.gid)
+}
+
+const onlyDigits = (s: string) => s.replace(/\D/g, '')
+
+/** Índice de columna (0-based) → letra A1 (0→A, 26→AA). */
+function colLetter(idx: number): string {
+  let n = idx + 1
+  let s = ''
+  while (n > 0) {
+    const m = (n - 1) % 26
+    s = String.fromCharCode(65 + m) + s
+    n = Math.floor((n - 1) / 26)
+  }
+  return s
+}
+
+/** Columna de teléfono en la hoja (encabezado o contenido). -1 si no hay. */
+function detectPhoneColumnRows(rows: string[][]): number {
+  const header = rows[0] ?? []
+  const byHeader = header.findIndex((h) => /tel[eé]fono|n[uú]mero|celular|whatsapp|phone|\bcel\b/i.test(h))
+  if (byHeader >= 0) return byHeader
+  const cols = Math.max(...rows.map((r) => r.length), 0)
+  let best = -1
+  let bestCount = 0
+  for (let c = 0; c < cols; c++) {
+    let count = 0
+    for (let r = 1; r < rows.length; r++) {
+      const v = onlyDigits(rows[r][c] || '')
+      if (v.length >= 6 && v.length <= 15) count++
+    }
+    if (count > bestCount) { bestCount = count; best = c }
+  }
+  return best
+}
+
+/**
+ * Escribe el estado y sub-estado del lead en su fila del Sheet, en las columnas
+ * "ESTADO" / "SUB-ESTADO" (si no existen, las crea al final). Solo hojas privadas
+ * (SERVICE_ACCOUNT). Best-effort: no lanza si la hoja no es escribible.
+ */
+export async function writeLeadStatusToSheet(opts: {
+  url: string
+  mode: SheetAccessMode
+  gid: string
+  sheetTitle: string | null
+  clientNumber: string
+  estado: string
+  subEstado: string
+}): Promise<void> {
+  if (opts.mode !== 'SERVICE_ACCOUNT' || !serviceAccountConfigured()) return
+  const spreadsheetId = parseSpreadsheetId(opts.url)
+  const sheets = getSheetsClient()
+
+  let title = opts.sheetTitle
+  if (!title) {
+    const tab = await findTabByGid(opts.url, opts.gid)
+    if (!tab) return
+    title = tab.title
+  }
+  const safeTitle = `'${title.replace(/'/g, "''")}'`
+
+  const res = await sheets.spreadsheets.values.get({ spreadsheetId, range: safeTitle })
+  const rows = (res.data.values ?? []).map((r) => r.map((c) => (c == null ? '' : String(c))))
+  if (rows.length < 1) return
+  const header = rows[0]
+
+  const phoneCol = detectPhoneColumnRows(rows)
+  if (phoneCol < 0) return
+  const target = onlyDigits(opts.clientNumber)
+  let rowIdx = -1
+  for (let r = 1; r < rows.length; r++) {
+    if (onlyDigits(rows[r][phoneCol] || '') === target) { rowIdx = r; break }
+  }
+  if (rowIdx < 0) return // la fila ya no está en la hoja
+
+  let estadoCol = header.findIndex((h) => /^\s*estado\s*$/i.test(h))
+  let subCol = header.findIndex((h) => /sub[\s_-]*estado/i.test(h))
+  const data: { range: string; values: string[][] }[] = []
+  let nextNew = header.length
+  if (estadoCol < 0) { estadoCol = nextNew++; data.push({ range: `${safeTitle}!${colLetter(estadoCol)}1`, values: [['ESTADO']] }) }
+  if (subCol < 0) { subCol = nextNew++; data.push({ range: `${safeTitle}!${colLetter(subCol)}1`, values: [['SUB-ESTADO']] }) }
+
+  const sheetRow = rowIdx + 1 // fila real (1-based)
+  data.push({ range: `${safeTitle}!${colLetter(estadoCol)}${sheetRow}`, values: [[opts.estado]] })
+  data.push({ range: `${safeTitle}!${colLetter(subCol)}${sheetRow}`, values: [[opts.subEstado]] })
+
+  await sheets.spreadsheets.values.batchUpdate({
+    spreadsheetId,
+    requestBody: { valueInputOption: 'RAW', data },
+  })
 }

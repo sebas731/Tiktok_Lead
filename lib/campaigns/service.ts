@@ -8,16 +8,14 @@ import { type AuthUser, getCampaignFilter } from '@/lib/auth/authorize'
  * Para el ASESOR el conteo son SOLO sus leads sin gestionar (SIN_GESTION).
  */
 export function listCampaigns(user: AuthUser) {
-  // Para el ASESOR el conteo son sus leads por atender (asignados y no finales).
+  // El conteo de la tarjeta son los leads ACTIVOS (sin VENTA/POSITIVO ni
+  // NEGATIVO), así disminuye a medida que se cierran. El ASESOR además solo
+  // cuenta los que tiene asignados.
+  const notFinal = { status: { notIn: [LEAD_STATUS.POSITIVO, LEAD_STATUS.NEGATIVO] } }
   const leadSelect =
     user.role === 'ASESOR'
-      ? {
-          where: {
-            asignadoAId: user.userId,
-            status: { notIn: [LEAD_STATUS.POSITIVO, LEAD_STATUS.NEGATIVO] },
-          },
-        }
-      : true
+      ? { where: { asignadoAId: user.userId, ...notFinal } }
+      : { where: notFinal }
   return prisma.campaign.findMany({
     where: getCampaignFilter(user),
     orderBy: { createdAt: 'desc' },

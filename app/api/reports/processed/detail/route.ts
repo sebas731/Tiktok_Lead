@@ -13,6 +13,7 @@ export async function GET(req: NextRequest) {
         campaignId: p.get('campaignId'),
         desde: p.get('desde'),
         hasta: p.get('hasta'),
+        status: p.get('status'),
       }),
     )
   } catch (e) {

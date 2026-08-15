@@ -83,7 +83,9 @@ export function AsesorCampaignLeads({ campaignId }: { campaignId: string }) {
   }
 
   const columns: Column<Lead>[] = [
-    {
+
+    { 
+      
       key: 'phone',
       header: 'Lead',
       render: (l) => (

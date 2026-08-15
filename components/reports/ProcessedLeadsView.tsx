@@ -9,27 +9,33 @@ import { PageHeader } from '@/components/layout/PageHeader'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { Donut, type DonutSegment } from '@/components/ui/Donut'
 import { apiGet } from '@/lib/api/client'
-import { STATUS_LABELS, SUBSTATUS_LABELS } from '@/lib/constants/leads'
+import { STATUS_LABELS, STATUS_OPTIONS, SUBSTATUS_LABELS } from '@/lib/constants/leads'
 import { userLabel, type Campaign, type Me, type ProcessedByAsesorRow, type ProcessedDetailRow } from '@/lib/types'
 
 const STATUS_COLS = ['POSITIVO', 'NEGATIVO', 'AGENDADO', 'NO_CONTACTO']
 const PALETTE = ['#a61c28', '#2563eb', '#059669', '#d97706', '#7c3aed', '#0891b2', '#db2777', '#65a30d', '#dc2626', '#4f46e5', '#0d9488', '#9333ea']
 
-type ViewMode = 'tabla' | 'dona'
+type ViewMode = 'tabla' | 'dona' | 'detalle'
+const VIEWS: { id: ViewMode; label: string }[] = [
+  { id: 'tabla', label: 'Tabla' },
+  { id: 'dona', label: 'Dona' },
+  { id: 'detalle', label: 'Detalle' },
+]
 
 export function ProcessedLeadsView() {
   const [rows, setRows] = useState<ProcessedByAsesorRow[]>([])
+  const [flat, setFlat] = useState<ProcessedDetailRow[]>([])
   const [campaigns, setCampaigns] = useState<Campaign[]>([])
   const [asesores, setAsesores] = useState<Me[]>([])
   const [campaignId, setCampaignId] = useState('')
   const [asesorId, setAsesorId] = useState('')
+  const [status, setStatus] = useState('')
   const [desde, setDesde] = useState('')
   const [hasta, setHasta] = useState('')
   const [view, setView] = useState<ViewMode>('tabla')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
 
-  // Detalle de un asesor
   const [detailOf, setDetailOf] = useState<ProcessedByAsesorRow | null>(null)
   const [detail, setDetail] = useState<ProcessedDetailRow[]>([])
   const [detailLoading, setDetailLoading] = useState(false)
@@ -43,18 +49,27 @@ export function ProcessedLeadsView() {
     const p = new URLSearchParams()
     if (campaignId) p.set('campaignId', campaignId)
     if (asesorId) p.set('asesorId', asesorId)
+    if (status) p.set('status', status)
     if (desde) p.set('desde', desde)
     if (hasta) p.set('hasta', hasta)
     return p.toString()
-  }, [campaignId, asesorId, desde, hasta])
+  }, [campaignId, asesorId, status, desde, hasta])
 
   const load = useCallback(() => {
     setLoading(true)
-    apiGet<ProcessedByAsesorRow[]>(`/api/reports/processed?${query()}`)
-      .then(setRows)
-      .catch((e) => setError(e instanceof Error ? e.message : 'Error'))
-      .finally(() => setLoading(false))
-  }, [query])
+    setError('')
+    if (view === 'detalle') {
+      apiGet<ProcessedDetailRow[]>(`/api/reports/processed/detail?${query()}`)
+        .then(setFlat)
+        .catch((e) => setError(e instanceof Error ? e.message : 'Error'))
+        .finally(() => setLoading(false))
+    } else {
+      apiGet<ProcessedByAsesorRow[]>(`/api/reports/processed?${query()}`)
+        .then(setRows)
+        .catch((e) => setError(e instanceof Error ? e.message : 'Error'))
+        .finally(() => setLoading(false))
+    }
+  }, [query, view])
   useEffect(load, [load])
 
   function openDetail(r: ProcessedByAsesorRow) {
@@ -72,8 +87,8 @@ export function ProcessedLeadsView() {
   const segments: DonutSegment[] = rows.map((r, i) => ({ label: r.asesorName, value: r.total, color: PALETTE[i % PALETTE.length] }))
 
   const columns: Column<ProcessedByAsesorRow>[] = [
-    { key: 'n', header: '#', render: (r) => String(rows.indexOf(r) + 1) },
     { key: 'asesor', header: 'Asesor', render: (r) => <span className="font-medium text-text">{r.asesorName}</span> },
+    { key: 'dni', header: 'DNI', render: (r) => <span className="font-mono text-xs">{r.asesorDni}</span> },
     { key: 'total', header: 'Total', render: (r) => <span className="font-semibold text-text">{r.total}</span> },
     ...STATUS_COLS.map((st) => ({
       key: st,
@@ -81,6 +96,16 @@ export function ProcessedLeadsView() {
       render: (r: ProcessedByAsesorRow) => r.byStatus[st] ?? 0,
     })),
     { key: 'ver', header: '', render: () => <span className="text-xs font-medium text-brand-red">Ver detalle →</span> },
+  ]
+
+  const flatColumns: Column<ProcessedDetailRow>[] = [
+    { key: 'asesor', header: 'Asesor', render: (d) => <span className="font-medium text-text">{d.asesorName}</span> },
+    { key: 'dni', header: 'DNI', render: (d) => <span className="font-mono text-xs">{d.asesorDni}</span> },
+    { key: 'lead', header: 'Lead', render: (d) => d.leadNumber },
+    { key: 'camp', header: 'Campaña', render: (d) => d.campaignName },
+    { key: 'estado', header: 'Estado', render: (d) => STATUS_LABELS[d.status] ?? d.status },
+    { key: 'sub', header: 'Sub-estado', render: (d) => SUBSTATUS_LABELS[d.subStatus] ?? d.subStatus },
+    { key: 'fecha', header: 'Fecha', render: (d) => new Date(d.processedAt).toLocaleString() },
   ]
 
   const detailColumns: Column<ProcessedDetailRow>[] = [
@@ -94,38 +119,43 @@ export function ProcessedLeadsView() {
 
   return (
     <div>
-      <PageHeader title="Leads procesados por asesor" description="Gestiones registradas por cada asesor. Haz clic en una fila para ver el detalle." />
+      <PageHeader title="Leads procesados por asesor" description="Gestiones registradas por cada asesor." />
 
       <div className="mb-4 inline-flex rounded-xl border border-border bg-surface p-1">
-        {(['tabla', 'dona'] as ViewMode[]).map((v) => (
+        {VIEWS.map((v) => (
           <button
-            key={v}
+            key={v.id}
             type="button"
-            onClick={() => setView(v)}
+            onClick={() => setView(v.id)}
             className={`rounded-lg px-3 py-1.5 text-sm font-medium transition ${
-              view === v ? 'bg-brand-red text-white shadow-sm' : 'text-text-muted hover:text-text'
+              view === v.id ? 'bg-brand-red text-white shadow-sm' : 'text-text-muted hover:text-text'
             }`}
           >
-            {v === 'tabla' ? 'Tabla' : 'Dona'}
+            {v.label}
           </button>
         ))}
       </div>
 
       <div className="mb-4 flex flex-wrap items-end gap-3">
-        <div className="w-56">
+        <div className="w-52">
           <Select label="Campaña" value={campaignId} onChange={setCampaignId} placeholder="Todas"
             options={campaigns.map((c) => ({ value: c.campaign_id, label: c.name }))} />
         </div>
-        <div className="w-56">
+        <div className="w-52">
           <Select label="Asesor" value={asesorId} onChange={setAsesorId} placeholder="Todos"
             options={asesores.map((a) => ({ value: a.user_id, label: userLabel(a) }))} />
+        </div>
+        <div className="w-44">
+          <Select label="Estado" value={status} onChange={setStatus} placeholder="Todos" options={STATUS_OPTIONS} />
         </div>
         <DatePicker label="Desde" value={desde} onChange={setDesde} />
         <DatePicker label="Hasta" value={hasta} onChange={setHasta} />
       </div>
       {error && <p className="mb-4 text-sm text-red-600">{error}</p>}
 
-      {view === 'tabla' ? (
+      {view === 'detalle' ? (
+        <Table columns={flatColumns} rows={flat} getRowKey={(d) => d.id} loading={loading} emptyMessage="Sin gestiones con estos filtros." />
+      ) : view === 'tabla' ? (
         <Table columns={columns} rows={rows} getRowKey={(r) => r.asesorId} loading={loading} onRowClick={openDetail} emptyMessage="Sin gestiones en el rango." />
       ) : rows.length === 0 ? (
         <EmptyState title="Sin datos" description="No hay gestiones para graficar con estos filtros." />
@@ -151,7 +181,7 @@ export function ProcessedLeadsView() {
       )}
 
       {detailOf && (
-        <Modal open size="xl" title={`Detalle — ${detailOf.asesorName} (${detailOf.total})`} onClose={() => setDetailOf(null)}>
+        <Modal open size="xl" title={`Detalle — ${detailOf.asesorName} (${detailOf.asesorDni})`} onClose={() => setDetailOf(null)}>
           <Table columns={detailColumns} rows={detail} getRowKey={(d) => d.id} loading={detailLoading} emptyMessage="Sin gestiones." />
         </Modal>
       )}
