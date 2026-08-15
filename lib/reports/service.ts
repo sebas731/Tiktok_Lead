@@ -2,7 +2,7 @@ import { prisma } from '@/lib/prisma'
 import { Prisma } from '@/lib/generated/prisma/client'
 import { HttpError } from '@/lib/api/response'
 import type { AuthUser } from '@/lib/auth/authorize'
-import type { ProcessedByAsesorRow } from '@/lib/types'
+import type { ProcessedByAsesorRow, ProcessedDetailRow } from '@/lib/types'
 
 export type ProcessedFilters = {
   campaignId?: string | null
@@ -11,15 +11,11 @@ export type ProcessedFilters = {
   asesorId?: string | null
 }
 
-/**
- * Leads procesados agrupados por asesor (desde LeadProcessLog).
- * ADMIN ve todo; SUPERVISOR solo las gestiones de leads de sus campañas.
- */
-export async function leadsProcessedByAsesor(user: AuthUser, f: ProcessedFilters): Promise<ProcessedByAsesorRow[]> {
+/** Construye el filtro de LeadProcessLog según rol y filtros (scoping común). */
+function buildProcessedWhere(user: AuthUser, f: ProcessedFilters): Prisma.LeadProcessLogWhereInput {
   if (user.role !== 'ADMIN' && user.role !== 'SUPERVISOR') {
     throw new HttpError(403, 'No tienes permiso para ver este reporte')
   }
-
   const where: Prisma.LeadProcessLogWhereInput = {}
   const leadWhere: Prisma.LeadWhereInput = {}
   if (user.role === 'SUPERVISOR') {
@@ -37,6 +33,15 @@ export async function leadsProcessedByAsesor(user: AuthUser, f: ProcessedFilters
       where.processedAt.lte = d
     }
   }
+  return where
+}
+
+/**
+ * Leads procesados agrupados por asesor (desde LeadProcessLog).
+ * ADMIN ve todo; SUPERVISOR solo las gestiones de leads de sus campañas.
+ */
+export async function leadsProcessedByAsesor(user: AuthUser, f: ProcessedFilters): Promise<ProcessedByAsesorRow[]> {
+  const where = buildProcessedWhere(user, f)
 
   const grouped = await prisma.leadProcessLog.groupBy({
     by: ['userId', 'status'],
@@ -60,4 +65,35 @@ export async function leadsProcessedByAsesor(user: AuthUser, f: ProcessedFilters
   for (const [id, row] of map) row.asesorName = names.get(id) ?? '—'
 
   return [...map.values()].sort((a, b) => b.total - a.total)
+}
+
+/** Detalle: gestiones (leads procesados) de un asesor, con su lead y campaña. */
+export async function processedLeadDetail(user: AuthUser, f: ProcessedFilters): Promise<ProcessedDetailRow[]> {
+  const asesorId = f.asesorId
+  if (!asesorId) throw new HttpError(400, 'Falta el asesor')
+  const where = buildProcessedWhere(user, f)
+
+  const logs = await prisma.leadProcessLog.findMany({
+    where,
+    orderBy: { processedAt: 'desc' },
+    take: 500,
+    select: {
+      id: true,
+      processedAt: true,
+      status: true,
+      sub_status: true,
+      observations: true,
+      lead: { select: { client_number: true, campaign: { select: { name: true } } } },
+    },
+  })
+
+  return logs.map((l) => ({
+    id: l.id,
+    processedAt: l.processedAt.toISOString(),
+    status: l.status,
+    subStatus: l.sub_status,
+    observations: l.observations,
+    leadNumber: l.lead.client_number,
+    campaignName: l.lead.campaign.name,
+  }))
 }

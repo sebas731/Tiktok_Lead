@@ -48,6 +48,17 @@ export type ProcessedByAsesorRow = {
   byStatus: Record<string, number>
 }
 
+/** Detalle de una gestión (lead procesado) para el reporte. */
+export type ProcessedDetailRow = {
+  id: string
+  processedAt: string
+  status: string
+  subStatus: string
+  observations: string | null
+  leadNumber: string
+  campaignName: string
+}
+
 /** Resumen de una sincronización de leads desde Google Sheets. */
 export type CampaignSyncSummary = {
   totalRows: number // filas de datos leídas (sin el encabezado)
