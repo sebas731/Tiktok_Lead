@@ -90,17 +90,30 @@ export async function processedLeadDetail(user: AuthUser, f: ProcessedFilters): 
   const logs = await prisma.leadProcessLog.findMany({
     where,
     orderBy: { processedAt: 'desc' },
-    take: 500,
+    take: 2000,
     select: {
       id: true,
+      userId: true,
       processedAt: true,
       status: true,
       sub_status: true,
       observations: true,
-      lead: { select: { client_number: true, campaign: { select: { name: true } } } },
+      lead: {
+        select: { id: true, client_number: true, reason: true, campaign: { select: { name: true } }, sale: { select: { code: true } } },
+      },
       user: { select: { name: true, first_last_name: true, second_last_name: true, document_number: true } },
     },
   })
+
+  // Supervisor de cada asesor (por su grupo), para la columna "Supervisor".
+  const asesorIds = [...new Set(logs.map((l) => l.userId))]
+  const members = asesorIds.length
+    ? await prisma.grupoMember.findMany({
+        where: { asesorId: { in: asesorIds } },
+        select: { asesorId: true, grupo: { select: { supervisor: { select: { name: true } } } } },
+      })
+    : []
+  const supByAsesor = new Map(members.map((m) => [m.asesorId, m.grupo.supervisor.name]))
 
   return logs.map((l) => ({
     id: l.id,
@@ -108,9 +121,13 @@ export async function processedLeadDetail(user: AuthUser, f: ProcessedFilters): 
     status: l.status,
     subStatus: l.sub_status,
     observations: l.observations,
+    reason: l.lead.reason,
+    leadId: l.lead.id,
     leadNumber: l.lead.client_number,
+    saleCode: l.lead.sale?.code ?? null,
     campaignName: l.lead.campaign.name,
     asesorName: fullName(l.user),
     asesorDni: l.user.document_number,
+    supervisorName: supByAsesor.get(l.userId) ?? '—',
   }))
 }

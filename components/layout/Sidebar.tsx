@@ -26,25 +26,15 @@ const NAV_BY_ROLE: Record<Role, NavItem[]> = {
     { href: '/dashboard', label: 'Inicio', icon: 'home' },
     { href: '/dashboard/campaigns', label: 'Campañas', icon: 'campaigns' },
     { href: '/dashboard/leads', label: 'Leads', icon: 'leads' },
-    { href: '/dashboard/ventas', label: 'Ventas', icon: 'ventas' },
     { href: '/dashboard/reportes', label: 'Leads procesados', icon: 'reportes' },
     { href: '/dashboard/grupos', label: 'Mis grupos', icon: 'grupos' },
     { href: '/dashboard/settings', label: 'Configuración', icon: 'settings' },
   ],
   ASESOR: [
     { href: '/dashboard/campaigns', label: 'Campañas', icon: 'campaigns' },
-    { href: '/dashboard/mis-ventas', label: 'Mis ventas', icon: 'ventas' },
     { href: '/dashboard/settings', label: 'Configuración', icon: 'settings' },
   ],
   BACK: [
-    {
-      label: 'Ventas',
-      icon: 'ventas',
-      children: [
-        { href: '/dashboard/ventas', label: 'Ver ventas' },
-        { href: '/dashboard/ventas/nueva', label: 'Nueva venta' },
-      ],
-    },
     { href: '/dashboard/campaigns', label: 'Campañas', icon: 'campaigns' },
     { href: '/dashboard/settings', label: 'Configuración', icon: 'settings' },
   ],

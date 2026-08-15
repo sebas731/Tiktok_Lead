@@ -1,7 +1,10 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
+import jsPDF from 'jspdf'
+import autoTable from 'jspdf-autotable'
 import { Table, type Column } from '@/components/ui/Table'
+import { Button } from '@/components/ui/Button'
 import { Select } from '@/components/ui/Select'
 import { DatePicker } from '@/components/ui/DatePicker'
 import { Modal } from '@/components/ui/Modal'
@@ -39,6 +42,7 @@ export function ProcessedLeadsView() {
   const [detailOf, setDetailOf] = useState<ProcessedByAsesorRow | null>(null)
   const [detail, setDetail] = useState<ProcessedDetailRow[]>([])
   const [detailLoading, setDetailLoading] = useState(false)
+  const [exporting, setExporting] = useState(false)
 
   useEffect(() => {
     apiGet<Campaign[]>('/api/campaigns').then(setCampaigns).catch(() => {})
@@ -71,6 +75,51 @@ export function ProcessedLeadsView() {
     }
   }, [query, view])
   useEffect(load, [load])
+
+  async function exportPdf() {
+    setExporting(true)
+    setError('')
+    try {
+      const data = await apiGet<ProcessedDetailRow[]>(`/api/reports/processed/detail?${query()}`)
+      const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' })
+      const GUINDA: [number, number, number] = [166, 28, 40] // color de la empresa
+      doc.setFontSize(16)
+      doc.setTextColor(...GUINDA)
+      doc.text('Leads procesados', 14, 14)
+      doc.setFontSize(10)
+      doc.setTextColor(90)
+      const rango = `Rango: ${desde || 'inicio'}  a  ${hasta || 'hoy'}`
+      doc.text(`${rango}   ·   ${data.length} gestiones   ·   Generado ${new Date().toLocaleString()}`, 14, 20)
+
+      autoTable(doc, {
+        startY: 24,
+        head: [['Fecha', 'Supervisor', 'Asesor', 'DNI', 'ID Lead', 'Código', 'Número', 'Campaña', 'Estado', 'Sub-estado', 'Motivo', 'Observaciones']],
+        body: data.map((r) => [
+          new Date(r.processedAt).toLocaleString(),
+          r.supervisorName,
+          r.asesorName,
+          r.asesorDni,
+          r.leadId.slice(0, 8),
+          r.saleCode ?? '—',
+          r.leadNumber,
+          r.campaignName,
+          STATUS_LABELS[r.status] ?? r.status,
+          SUBSTATUS_LABELS[r.subStatus] ?? r.subStatus,
+          r.reason || '—',
+          r.observations ?? '—',
+        ]),
+        styles: { fontSize: 7, cellPadding: 1.5, overflow: 'linebreak' },
+        headStyles: { fillColor: GUINDA, textColor: 255, fontStyle: 'bold' },
+        alternateRowStyles: { fillColor: [250, 235, 237] }, // guinda muy claro
+        margin: { left: 10, right: 10 },
+      })
+      doc.save(`leads-procesados-${new Date().toISOString().slice(0, 10)}.pdf`)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Error al exportar')
+    } finally {
+      setExporting(false)
+    }
+  }
 
   function openDetail(r: ProcessedByAsesorRow) {
     setDetailOf(r)
@@ -119,7 +168,11 @@ export function ProcessedLeadsView() {
 
   return (
     <div>
-      <PageHeader title="Leads procesados por asesor" description="Gestiones registradas por cada asesor." />
+      <PageHeader
+        title="Leads procesados por asesor"
+        description="Gestiones registradas por cada asesor."
+        actions={<Button onClick={exportPdf} loading={exporting}>Exportar PDF</Button>}
+      />
 
       <div className="mb-4 inline-flex rounded-xl border border-border bg-surface p-1">
         {VIEWS.map((v) => (

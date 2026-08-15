@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/Button'
 import { Badge } from '@/components/ui/Badge'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { apiGet } from '@/lib/api/client'
-import type { Me } from '@/lib/types'
+import { fullName, type Me } from '@/lib/types'
 import { UserFormModal } from './UserFormModal'
 import { UserDetailModal } from './UserDetailModal'
 
@@ -24,7 +24,7 @@ export function UsersView() {
   useEffect(load, [])
 
   const columns: Column<Me>[] = [
-    { key: 'name', header: 'Nombre', render: (u) => u.name },
+    { key: 'name', header: 'Nombre', render: (u) => fullName(u) },
     { key: 'login', header: 'Usuario', render: (u) => u.login },
     { key: 'role', header: 'Rol', render: (u) => u.rol.name },
     {

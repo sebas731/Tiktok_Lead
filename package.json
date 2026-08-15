@@ -14,6 +14,8 @@
     "bcryptjs": "^3.0.3",
     "googleapis": "^174.0.1",
     "jose": "^6.2.8",
+    "jspdf": "^4.2.1",
+    "jspdf-autotable": "^5.0.8",
     "next": "16.2.12",
     "next-auth": "^4.24.15",
     "pg": "^8.22.0",

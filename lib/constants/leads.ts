@@ -12,6 +12,8 @@ export const STATUS_LABELS: Record<string, string> = {
 export const SUBSTATUS_LABELS: Record<string, string> = {
   OTRO: 'Otro',
   VENTA: 'Venta',
+  YA_TIENE_CLARO: 'Ya tiene Claro',
+  NO_CALIFICA_POR_DNI: 'No califica por DNI',
   CLIENTE_NO_SOLICITO_INFORMACION: 'No solicitó información',
   NO_TIENE_COBERTURA: 'No tiene cobertura',
   LO_PENSARA: 'Lo pensará',
@@ -24,7 +26,7 @@ export const SUBSTATUS_LABELS: Record<string, string> = {
 export const SUBSTATUS_BY_STATUS: Record<string, string[]> = {
   SIN_GESTION: ['OTRO'],
   POSITIVO: ['VENTA', 'OTRO'],
-  NEGATIVO: ['CLIENTE_NO_SOLICITO_INFORMACION', 'NO_TIENE_COBERTURA', 'OTRO'],
+  NEGATIVO: ['YA_TIENE_CLARO', 'NO_CALIFICA_POR_DNI', 'CLIENTE_NO_SOLICITO_INFORMACION', 'NO_TIENE_COBERTURA', 'OTRO'],
   AGENDADO: ['LO_PENSARA', 'LLAMAR_MAS_TARDE', 'OTRO'],
   NO_CONTACTO: ['CELULAR_APAGADO', 'NO_CONTESTA', 'OTRO'],
 }

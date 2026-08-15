@@ -56,10 +56,14 @@ export type ProcessedDetailRow = {
   status: string
   subStatus: string
   observations: string | null
+  reason: string
+  leadId: string
   leadNumber: string
+  saleCode: string | null
   campaignName: string
   asesorName: string
   asesorDni: string
+  supervisorName: string
 }
 
 /** Resumen de una sincronización de leads desde Google Sheets. */
