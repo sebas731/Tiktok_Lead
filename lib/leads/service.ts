@@ -121,6 +121,14 @@ export async function selfAssignLead(user: AuthUser, campaignId: string) {
   if (!campaign) throw new HttpError(404, 'Campaña no encontrada')
   if (campaign.leadMode !== 'AUTO') throw new HttpError(400, 'La campaña no está en modo automático')
 
+  // Solo puede tomar un lead si no tiene ninguno por atender (uno a la vez).
+  const pending = await prisma.lead.count({
+    where: { campaignId, asignadoAId: user.userId, status: { notIn: FINAL_STATUSES } },
+  })
+  if (pending > 0) {
+    throw new HttpError(409, 'Ya tienes un lead por atender. Termínalo antes de tomar otro.')
+  }
+
   for (let attempt = 0; attempt < 3; attempt++) {
     const next = await prisma.lead.findFirst({
       where: { campaignId, asignadoAId: null, status: { notIn: FINAL_STATUSES } },
