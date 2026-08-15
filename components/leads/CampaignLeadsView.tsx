@@ -12,6 +12,7 @@ import { apiGet, apiSend } from '@/lib/api/client'
 import { STATUS_LABELS, STATUS_OPTIONS } from '@/lib/constants/leads'
 import { userLabel, type Lead, type Me, type Role } from '@/lib/types'
 import { AssignLeadsModal } from './AssignLeadsModal'
+import { RecoverLeadsModal } from './RecoverLeadsModal'
 
 export function CampaignLeadsView({ campaignId, role }: { campaignId: string; role: Role }) {
   const canAssign = role === 'ADMIN' || role === 'SUPERVISOR'
@@ -22,6 +23,7 @@ export function CampaignLeadsView({ campaignId, role }: { campaignId: string; ro
   const [tab, setTab] = useState('sin')
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [assign, setAssign] = useState<{ open: boolean; ids: string[] }>({ open: false, ids: [] })
+  const [recoverOpen, setRecoverOpen] = useState(false)
   const [error, setError] = useState('')
 
   useEffect(() => {
@@ -117,6 +119,7 @@ export function CampaignLeadsView({ campaignId, role }: { campaignId: string; ro
                   Asignar selección ({selected.size})
                 </Button>
                 <Button onClick={() => setAssign({ open: true, ids: [] })}>Asignar por cantidad</Button>
+                <Button variant="secondary" onClick={() => setRecoverOpen(true)}>Recuperar leads</Button>
               </div>
             ) : undefined
           }
@@ -156,6 +159,14 @@ export function CampaignLeadsView({ campaignId, role }: { campaignId: string; ro
           onAssigned={load}
           campaignId={campaignId}
           leadIds={assign.ids}
+        />
+      )}
+      {recoverOpen && (
+        <RecoverLeadsModal
+          open
+          onClose={() => setRecoverOpen(false)}
+          onRecovered={load}
+          campaignId={campaignId}
         />
       )}
     </div>

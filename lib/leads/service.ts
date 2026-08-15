@@ -14,6 +14,30 @@ export async function getVisibleLead(user: AuthUser, id: string) {
   return lead
 }
 
+/**
+ * Lead que el usuario puede GESTIONAR (editar). Igual que getVisibleLead, pero
+ * para el ASESOR también permite un lead que él trabajó y que volvió al pool
+ * (sin asesor) — p.ej. tras dejarlo NO_CONTACTO. Así, reeditarlo no falla con
+ * "no está asignado". Si otro asesor ya lo tomó, sí se bloquea (mensaje claro).
+ */
+async function getEditableLead(user: AuthUser, id: string) {
+  const where: Prisma.LeadWhereInput =
+    user.role === 'ASESOR'
+      ? {
+          id,
+          OR: [
+            { asignadoAId: user.userId },
+            { asignadoAId: null, processLogs: { some: { userId: user.userId } } },
+          ],
+        }
+      : { AND: [getLeadFilter(user), { id }] }
+  const lead = await prisma.lead.findFirst({ where })
+  if (!lead) {
+    throw new HttpError(409, 'Este lead ya no está disponible para ti; puede haberlo tomado otro asesor.')
+  }
+  return lead
+}
+
 export type LeadFilters = {
   campaignId?: string | null
   status?: string | null
@@ -127,7 +151,7 @@ export async function countAvailableLeads(campaignId: string): Promise<number> {
  * rastro en LeadProcessLog.
  */
 export async function updateLead(user: AuthUser, id: string, input: Record<string, unknown>) {
-  const lead = await getVisibleLead(user, id)
+  const lead = await getEditableLead(user, id)
 
   const status = input.status !== undefined ? requireEnum(input.status, LEAD_STATUS, 'status') : lead.status
   const subStatus =
@@ -143,9 +167,14 @@ export async function updateLead(user: AuthUser, id: string, input: Record<strin
     // Vuelve al pool, pero con 5h de enfriamiento (no se reasigna en ese lapso).
     data.asignadoA = { disconnect: true }
     data.reservedUntil = new Date(Date.now() + 5 * HOUR)
-  } else if (status === LEAD_STATUS.AGENDADO) {
-    // Se reserva 24h para el mismo asesor (sigue asignado).
-    data.reservedUntil = new Date(Date.now() + 24 * HOUR)
+  } else {
+    // Cualquier otro estado mantiene el lead atribuido al asesor que lo gestionó
+    // (evita que un lead reeditado desde el pool quede AGENDADO/POSITIVO sin asesor).
+    if (user.role === 'ASESOR' && lead.asignadoAId !== user.userId) {
+      data.asignadoA = { connect: { user_id: user.userId } }
+    }
+    // AGENDADO se reserva 24h para su asesor; el resto no reserva.
+    data.reservedUntil = status === LEAD_STATUS.AGENDADO ? new Date(Date.now() + 24 * HOUR) : null
   }
 
   const [updated] = await prisma.$transaction([
@@ -217,7 +246,17 @@ export async function selfAssignLead(user: AuthUser, campaignId: string) {
       select: { id: true, asignadoAId: true },
     })
     if (!next) {
-      next = await prisma.lead.findFirst({ where: pool, orderBy: order, select: { id: true, asignadoAId: true } })
+      next = await prisma.lead.findFirst({
+        where: {
+          ...pool,
+          // Anti-bucle: aunque la campaña permita jalar NO_CONTACTO, no le devolvemos
+          // al asesor un lead que ÉL MISMO dejó en NO_CONTACTO (evita el mismo número
+          // una y otra vez). Otros asesores sí pueden tomarlo.
+          NOT: { status: LEAD_STATUS.NO_CONTACTO, processLogs: { some: { userId: user.userId } } },
+        },
+        orderBy: order,
+        select: { id: true, asignadoAId: true },
+      })
     }
     if (!next) throw new HttpError(404, 'No hay leads disponibles para atender en esta campaña')
 
@@ -340,4 +379,31 @@ export async function assignLeads(user: AuthUser, input: AssignLeadsInput) {
     }),
   ])
   return { assigned: leadIds.length, asesorId }
+}
+
+/**
+ * Recupera leads ASIGNADOS que siguen SIN_GESTION: los desasigna y los devuelve
+ * al pool (sin asesor y sin reserva), para que otros puedan tomarlos. Solo actúa
+ * sobre leads de la campaña que estén asignados y sin gestionar (los ya
+ * gestionados no se tocan). ADMIN, o SUPERVISOR con la campaña asignada.
+ */
+export async function recoverLeads(user: AuthUser, input: { campaignId?: unknown; leadIds?: unknown }) {
+  const campaignId = requireString(input.campaignId, 'campaignId')
+  await assertCanAssignInCampaign(user, campaignId)
+
+  if (!Array.isArray(input.leadIds) || input.leadIds.length === 0) {
+    throw new HttpError(400, 'Debes enviar leadIds (array) con al menos un lead')
+  }
+  const leadIds = input.leadIds.map((v, i) => requireString(v, `leadIds[${i}]`))
+
+  const res = await prisma.lead.updateMany({
+    where: {
+      id: { in: leadIds },
+      campaignId,
+      status: LEAD_STATUS.SIN_GESTION,
+      asignadoAId: { not: null },
+    },
+    data: { asignadoAId: null, reservedUntil: null },
+  })
+  return { recovered: res.count }
 }
