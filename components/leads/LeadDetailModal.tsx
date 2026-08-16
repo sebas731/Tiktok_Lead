@@ -7,6 +7,7 @@ import { Select } from '@/components/ui/Select'
 import { Textarea } from '@/components/ui/Textarea'
 import { apiSend } from '@/lib/api/client'
 import { STATUS_OPTIONS, substatusOptions } from '@/lib/constants/leads'
+import { toDigits } from '@/lib/leads/phone'
 import type { Lead } from '@/lib/types'
 
 type Props = {
@@ -36,7 +37,8 @@ export function LeadDetailModal({ lead, onClose, onSaved, onRegisterVenta }: Pro
   }
 
   async function copyNumber() {
-    await navigator.clipboard.writeText(lead.client_number)
+    // Se copia solo con dígitos ("934468388"), como lo usa la app de llamadas.
+    await navigator.clipboard.writeText(toDigits(lead.client_number))
     setCopied(true)
     setTimeout(() => setCopied(false), 1500)
   }
