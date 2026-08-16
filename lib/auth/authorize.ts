@@ -41,6 +41,17 @@ export async function requireRole(roles: Role[]): Promise<AuthUser> {
   return user
 }
 
+/**
+ * Exige que el usuario pueda gestionar la campaña: ADMIN cualquiera; SUPERVISOR
+ * solo las que tiene asignadas (CampaignAssignment). Lanza 403 si no.
+ */
+export async function assertCanManageCampaign(user: AuthUser, campaignId: string): Promise<void> {
+  if (user.role === 'ADMIN') return
+  if (user.role !== 'SUPERVISOR') throw new AuthError('No tienes permiso sobre esta campaña', 403)
+  const count = await prisma.campaignAssignment.count({ where: { campaignId, userId: user.userId } })
+  if (count === 0) throw new AuthError('Esa campaña no está asignada a ti', 403)
+}
+
 // ── Filtros de campañas y leads (síncronos, puros) ──────────────────────────
 
 /**

@@ -114,6 +114,9 @@ export function CampaignsView({ role }: { role: Role }) {
                   <Button variant="ghost" onClick={() => router.push(`/dashboard/campaigns/${c.campaign_id}/assign`)}>
                     Gestionar accesos
                   </Button>
+                  {c.source === 'EXCEL' && (
+                    <Button variant="ghost" loading={syncing === c.campaign_id} onClick={() => sync(c)}>Sincronizar</Button>
+                  )}
                 </div>
               )}
             </button>

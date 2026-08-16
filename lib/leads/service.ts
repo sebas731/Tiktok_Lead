@@ -14,26 +14,37 @@ export async function getVisibleLead(user: AuthUser, id: string) {
   return lead
 }
 
+/** IDs de los últimos N leads distintos que el asesor gestionó (más reciente primero). */
+async function lastProcessedLeadIds(userId: string, take: number): Promise<string[]> {
+  const logs = await prisma.leadProcessLog.findMany({
+    where: { userId },
+    orderBy: { processedAt: 'desc' },
+    distinct: ['leadId'],
+    take,
+    select: { leadId: true },
+  })
+  return logs.map((l) => l.leadId)
+}
+
 /**
- * Lead que el usuario puede GESTIONAR (editar). Igual que getVisibleLead, pero
- * para el ASESOR también permite un lead que él trabajó y que volvió al pool
- * (sin asesor) — p.ej. tras dejarlo NO_CONTACTO. Así, reeditarlo no falla con
- * "no está asignado". Si otro asesor ya lo tomó, sí se bloquea (mensaje claro).
+ * Lead que el usuario puede GESTIONAR (editar).
+ * - ADMIN / SUPERVISOR / BACK: cualquier lead dentro de su visibilidad normal
+ *   (el admin/supervisor puede corregir cualquier lead de sus campañas).
+ * - ASESOR: el lead que tiene asignado, o uno de sus ÚLTIMOS 5 gestionados
+ *   (para recuperar/corregir una gestión reciente aunque ya volviera al pool).
  */
 async function getEditableLead(user: AuthUser, id: string) {
-  const where: Prisma.LeadWhereInput =
-    user.role === 'ASESOR'
-      ? {
-          id,
-          OR: [
-            { asignadoAId: user.userId },
-            { asignadoAId: null, processLogs: { some: { userId: user.userId } } },
-          ],
-        }
-      : { AND: [getLeadFilter(user), { id }] }
-  const lead = await prisma.lead.findFirst({ where })
+  if (user.role === 'ASESOR') {
+    const lead = await prisma.lead.findUnique({ where: { id } })
+    if (!lead) throw new HttpError(404, 'Lead no encontrado')
+    if (lead.asignadoAId === user.userId) return lead
+    const recientes = await lastProcessedLeadIds(user.userId, 5)
+    if (recientes.includes(id)) return lead
+    throw new HttpError(409, 'Solo puedes corregir el lead que tienes asignado o tus últimos 5 gestionados.')
+  }
+  const lead = await prisma.lead.findFirst({ where: { AND: [getLeadFilter(user), { id }] } })
   if (!lead) {
-    throw new HttpError(409, 'Este lead ya no está disponible para ti; puede haberlo tomado otro asesor.')
+    throw new HttpError(409, 'Este lead ya no está disponible para ti.')
   }
   return lead
 }

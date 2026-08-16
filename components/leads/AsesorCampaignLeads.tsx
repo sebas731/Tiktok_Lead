@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { LinkButton } from '@/components/ui/LinkButton'
 import { Button } from '@/components/ui/Button'
@@ -13,6 +13,10 @@ import { STATUS_LABELS, SUBSTATUS_LABELS } from '@/lib/constants/leads'
 import type { Campaign, Lead, Me } from '@/lib/types'
 import { LeadDetailModal } from './LeadDetailModal'
 import { WhatsAppButton } from './WhatsAppButton'
+import { RecoverHelpModal } from './RecoverHelpModal'
+
+// En el historial solo se pueden recuperar/corregir los N leads más recientes.
+const RECOVERABLE = 5
 
 export function AsesorCampaignLeads({ campaignId }: { campaignId: string }) {
   const router = useRouter()
@@ -25,7 +29,24 @@ export function AsesorCampaignLeads({ campaignId }: { campaignId: string }) {
   const [availableCount, setAvailableCount] = useState(0)
   const [notice, setNotice] = useState('')
   const [assigning, setAssigning] = useState(false)
+  const [helpOpen, setHelpOpen] = useState(false)
   const [error, setError] = useState('')
+
+  // En historial solo son recuperables las primeras 5 filas (más recientes);
+  // en "Por atender" todo lo asignado es editable.
+  const recoverableIds = useMemo(
+    () => new Set((tab === 'historial' ? leads.slice(0, RECOVERABLE) : leads).map((l) => l.id)),
+    [leads, tab],
+  )
+
+  function openDetail(l: Lead) {
+    if (tab === 'historial' && !recoverableIds.has(l.id)) {
+      setNotice(`Solo puedes recuperar tus ${RECOVERABLE} leads más recientes.`)
+      return
+    }
+    setNotice('')
+    setDetail(l)
+  }
 
   function load(t = tab) {
     apiGet<Lead[]>(`/api/leads?campaignId=${campaignId}&view=${t}`)
@@ -108,6 +129,18 @@ export function AsesorCampaignLeads({ campaignId }: { campaignId: string }) {
       header: 'WhatsApp',
       render: (l) => <WhatsAppButton leadNumber={l.client_number} asesorName={asesorName} />,
     },
+    ...(tab === 'historial'
+      ? [{
+          key: 'recuperar',
+          header: '',
+          render: (l: Lead) =>
+            recoverableIds.has(l.id) ? (
+              <span className="inline-flex items-center gap-1 text-xs font-medium text-brand-red">↩ Recuperar</span>
+            ) : (
+              <span className="text-xs text-text-muted" title="Fuera de tus 5 más recientes">🔒</span>
+            ),
+        }]
+      : []),
   ]
 
   return (
@@ -146,13 +179,26 @@ export function AsesorCampaignLeads({ campaignId }: { campaignId: string }) {
           onChange={setTab}
         />
       </div>
+      {tab === 'historial' && (
+        <div className="mb-3 flex items-center gap-2 text-sm text-text-muted">
+          <span>Puedes recuperar tus {RECOVERABLE} leads más recientes: haz clic en la fila para corregirlos.</span>
+          <button
+            type="button"
+            onClick={() => setHelpOpen(true)}
+            className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-border text-xs font-bold text-text-muted transition hover:bg-bg hover:text-text"
+            aria-label="Cómo recuperar un lead"
+          >
+            ?
+          </button>
+        </div>
+      )}
       {notice && <p className="mb-4 text-sm text-emerald-700">{notice}</p>}
       {error && <p className="mb-4 text-sm text-red-600">{error}</p>}
       <Table
         columns={columns}
         rows={leads}
         getRowKey={(l) => l.id}
-        onRowClick={setDetail}
+        onRowClick={openDetail}
         emptyMessage={isAuto && tab === 'pendientes' ? 'Sin leads. Pulsa "Asignarme un lead".' : 'Sin leads en esta vista.'}
       />
       {detail && (
@@ -163,6 +209,7 @@ export function AsesorCampaignLeads({ campaignId }: { campaignId: string }) {
           onRegisterVenta={() => router.push(`/dashboard/mis-ventas?leadId=${detail.id}&campaignId=${detail.campaignId}`)}
         />
       )}
+      {helpOpen && <RecoverHelpModal onClose={() => setHelpOpen(false)} />}
     </div>
   )
 }

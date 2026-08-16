@@ -7,12 +7,14 @@ import { Button } from '@/components/ui/Button'
 import { Select } from '@/components/ui/Select'
 import { Tabs } from '@/components/ui/Tabs'
 import { Badge, leadStatusTone } from '@/components/ui/Badge'
+import { InfoHint } from '@/components/ui/InfoHint'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { apiGet, apiSend } from '@/lib/api/client'
 import { STATUS_LABELS, STATUS_OPTIONS } from '@/lib/constants/leads'
 import { userLabel, type Lead, type Me, type Role } from '@/lib/types'
 import { AssignLeadsModal } from './AssignLeadsModal'
 import { RecoverLeadsModal } from './RecoverLeadsModal'
+import { LeadDetailModal } from './LeadDetailModal'
 
 export function CampaignLeadsView({ campaignId, role }: { campaignId: string; role: Role }) {
   const canAssign = role === 'ADMIN' || role === 'SUPERVISOR'
@@ -24,6 +26,7 @@ export function CampaignLeadsView({ campaignId, role }: { campaignId: string; ro
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [assign, setAssign] = useState<{ open: boolean; ids: string[] }>({ open: false, ids: [] })
   const [recoverOpen, setRecoverOpen] = useState(false)
+  const [detail, setDetail] = useState<Lead | null>(null)
   const [error, setError] = useState('')
 
   useEffect(() => {
@@ -75,7 +78,12 @@ export function CampaignLeadsView({ campaignId, role }: { campaignId: string; ro
           key: 'sel',
           header: '',
           render: (l: Lead) => (
-            <input type="checkbox" checked={selected.has(l.id)} onChange={() => toggle(l.id)} />
+            <input
+              type="checkbox"
+              checked={selected.has(l.id)}
+              onChange={() => toggle(l.id)}
+              onClick={(e) => e.stopPropagation()}
+            />
           ),
         }]
       : []),
@@ -85,7 +93,16 @@ export function CampaignLeadsView({ campaignId, role }: { campaignId: string; ro
       header: 'Estado',
       render: (l) => <Badge tone={leadStatusTone(l.status)}>{STATUS_LABELS[l.status] ?? l.status}</Badge>,
     },
-    { key: 'asesor', header: 'Asesor', render: (l) => (l.asignadoA ? userLabel(l.asignadoA) : '—') },
+    {
+      key: 'asesor',
+      header: (
+        <span className="inline-flex items-center normal-case">
+          Asesor
+          <InfoHint text="Asesor ACTUAL que tiene el lead asignado (quien lo está atendiendo ahora). La columna «Procesado por» muestra quién lo gestionó por última vez antes." />
+        </span>
+      ),
+      render: (l) => (l.asignadoA ? userLabel(l.asignadoA) : '—'),
+    },
     {
       key: 'procesadoPor',
       header: 'Procesado por',
@@ -146,10 +163,14 @@ export function CampaignLeadsView({ campaignId, role }: { campaignId: string; ro
         />
       </div>
       {error && <p className="mb-4 text-sm text-red-600">{error}</p>}
+      {canAssign && (
+        <p className="mb-2 text-xs text-text-muted">Haz clic en un lead para revisar o corregir su gestión.</p>
+      )}
       <Table
         columns={columns}
         rows={rows}
         getRowKey={(l) => l.id}
+        onRowClick={canAssign ? setDetail : undefined}
         emptyMessage={tab === 'sin' ? 'No hay leads sin asignar.' : 'No hay leads asignados.'}
       />
       {assign.open && (
@@ -167,6 +188,14 @@ export function CampaignLeadsView({ campaignId, role }: { campaignId: string; ro
           onClose={() => setRecoverOpen(false)}
           onRecovered={load}
           campaignId={campaignId}
+        />
+      )}
+      {detail && (
+        <LeadDetailModal
+          key={detail.id}
+          lead={detail}
+          onClose={() => setDetail(null)}
+          onSaved={() => { setDetail(null); load() }}
         />
       )}
     </div>
