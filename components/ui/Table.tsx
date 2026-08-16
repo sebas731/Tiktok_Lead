@@ -11,6 +11,8 @@ type TableProps<T> = {
   rows: T[]
   getRowKey: (row: T) => string
   onRowClick?: (row: T) => void
+  /** Clases extra por fila (p.ej. para resaltar una fila recién actualizada). */
+  rowClassName?: (row: T) => string
   emptyMessage?: string
   loading?: boolean
 }
@@ -20,6 +22,7 @@ export function Table<T>({
   rows,
   getRowKey,
   onRowClick,
+  rowClassName,
   emptyMessage = 'Sin registros',
   loading = false,
 }: TableProps<T>) {
@@ -55,7 +58,7 @@ export function Table<T>({
                 onClick={onRowClick ? () => onRowClick(row) : undefined}
                 className={`border-b border-border/70 transition-colors last:border-0 ${
                   onRowClick ? 'cursor-pointer hover:bg-brand-red/[0.04]' : ''
-                }`}
+                } ${rowClassName?.(row) ?? ''}`}
               >
                 {columns.map((col) => (
                   <td key={col.key} className="px-4 py-3 text-text">

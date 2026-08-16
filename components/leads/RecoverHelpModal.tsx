@@ -19,11 +19,13 @@ export function RecoverHelpModal({ onClose }: { onClose: () => void }) {
       `}</style>
 
       <div className="flex flex-col gap-5">
-        {/* Dibujo animado */}
-        <div className="relative flex h-28 items-center justify-between rounded-2xl border border-border bg-bg/40 px-5">
-          <div className="text-center">
-            <div className="rh-float text-3xl">🗂️</div>
-            <p className="mt-1 text-[11px] font-medium text-text-muted">Historial</p>
+        {/* Dibujo animado (SVG, sin emojis) */}
+        <div className="relative flex h-28 items-center justify-between rounded-2xl border border-border bg-bg/40 px-6">
+          <div className="rh-float flex flex-col items-center gap-1 text-text-muted">
+            <svg className="h-8 w-8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7">
+              <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7Z" strokeLinejoin="round" />
+            </svg>
+            <span className="text-[11px] font-medium">Historial</span>
           </div>
 
           <svg className="rh-arrow absolute left-1/2 top-1/2 h-6 w-20 -translate-x-1/2 -translate-y-1/2 text-brand-red" viewBox="0 0 80 24" fill="none" stroke="currentColor" strokeWidth="2.5">
@@ -31,14 +33,16 @@ export function RecoverHelpModal({ onClose }: { onClose: () => void }) {
             <path d="m54 4 12 8-12 8" strokeLinecap="round" strokeLinejoin="round" />
           </svg>
 
-          <div className="rh-card absolute left-6 flex items-center gap-2 rounded-lg border border-brand-red/40 bg-surface px-3 py-2 shadow-sm">
-            <span className="text-lg">📱</span>
-            <span className="text-xs font-medium text-text">Lead</span>
+          <div className="rh-card absolute left-8 rounded-lg border border-brand-red/40 bg-surface px-3 py-2 text-xs font-medium text-text shadow-sm">
+            Lead
           </div>
 
-          <div className="text-center">
-            <div className="rh-pop text-3xl">🙋</div>
-            <p className="mt-1 text-[11px] font-medium text-text-muted">Por atender</p>
+          <div className="rh-pop flex flex-col items-center gap-1 text-emerald-600">
+            <svg className="h-8 w-8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7">
+              <path d="M3 12h4l2 3h6l2-3h4" strokeLinecap="round" strokeLinejoin="round" />
+              <path d="M5 12V6a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v6" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+            <span className="text-[11px] font-medium">Por atender</span>
           </div>
         </div>
 
@@ -54,7 +58,7 @@ export function RecoverHelpModal({ onClose }: { onClose: () => void }) {
           </li>
           <li className="flex gap-2.5">
             <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-brand-red/10 text-xs font-bold text-brand-red">3</span>
-            <span>Cambia la tipificación y <b>guarda</b>: el lead vuelve a ti para atenderlo. 🎉</span>
+            <span>Cambia la tipificación y <b>guarda</b>: el lead vuelve a «Por atender» y se resalta en verde.</span>
           </li>
         </ol>
       </div>

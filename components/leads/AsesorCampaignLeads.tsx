@@ -30,6 +30,7 @@ export function AsesorCampaignLeads({ campaignId }: { campaignId: string }) {
   const [notice, setNotice] = useState('')
   const [assigning, setAssigning] = useState(false)
   const [helpOpen, setHelpOpen] = useState(false)
+  const [highlightId, setHighlightId] = useState('')
   const [error, setError] = useState('')
 
   // En historial solo son recuperables las primeras 5 filas (más recientes);
@@ -46,6 +47,23 @@ export function AsesorCampaignLeads({ campaignId }: { campaignId: string }) {
     }
     setNotice('')
     setDetail(l)
+  }
+
+  // Tras guardar: si fue una recuperación desde el historial, lo llevamos a "Por
+  // atender" y resaltamos la fila en verde 3 s para que sea fácil de ubicar.
+  function onLeadSaved(leadId: string) {
+    const recovered = tab === 'historial'
+    setDetail(null)
+    if (recovered) {
+      setTab('pendientes')
+      load('pendientes')
+      setHighlightId(leadId)
+      setTimeout(() => setHighlightId(''), 3000)
+    } else {
+      load(tab)
+    }
+    refreshPending()
+    refreshAvailable()
   }
 
   function load(t = tab) {
@@ -135,9 +153,9 @@ export function AsesorCampaignLeads({ campaignId }: { campaignId: string }) {
           header: '',
           render: (l: Lead) =>
             recoverableIds.has(l.id) ? (
-              <span className="inline-flex items-center gap-1 text-xs font-medium text-brand-red">↩ Recuperar</span>
+              <span className="text-xs font-medium text-brand-red">Recuperar</span>
             ) : (
-              <span className="text-xs text-text-muted" title="Fuera de tus 5 más recientes">🔒</span>
+              <span className="text-xs text-text-muted" title="Fuera de tus 5 más recientes">No disponible</span>
             ),
         }]
       : []),
@@ -194,18 +212,23 @@ export function AsesorCampaignLeads({ campaignId }: { campaignId: string }) {
       )}
       {notice && <p className="mb-4 text-sm text-emerald-700">{notice}</p>}
       {error && <p className="mb-4 text-sm text-red-600">{error}</p>}
+      <style>{`
+        @keyframes flash-green { 0%,70% { background-color: rgba(16,185,129,.18); } 100% { background-color: transparent; } }
+        .flash-green { animation: flash-green 3s ease-out; }
+      `}</style>
       <Table
         columns={columns}
         rows={leads}
         getRowKey={(l) => l.id}
         onRowClick={openDetail}
+        rowClassName={(l) => (l.id === highlightId ? 'flash-green' : '')}
         emptyMessage={isAuto && tab === 'pendientes' ? 'Sin leads. Pulsa "Asignarme un lead".' : 'Sin leads en esta vista.'}
       />
       {detail && (
         <LeadDetailModal
           lead={detail}
           onClose={() => setDetail(null)}
-          onSaved={() => { load(tab); refreshPending(); refreshAvailable() }}
+          onSaved={() => onLeadSaved(detail.id)}
           onRegisterVenta={() => router.push(`/dashboard/mis-ventas?leadId=${detail.id}&campaignId=${detail.campaignId}`)}
         />
       )}

@@ -14,32 +14,25 @@ export async function getVisibleLead(user: AuthUser, id: string) {
   return lead
 }
 
-/** IDs de los últimos N leads distintos que el asesor gestionó (más reciente primero). */
-async function lastProcessedLeadIds(userId: string, take: number): Promise<string[]> {
-  const logs = await prisma.leadProcessLog.findMany({
-    where: { userId },
-    orderBy: { processedAt: 'desc' },
-    distinct: ['leadId'],
-    take,
-    select: { leadId: true },
-  })
-  return logs.map((l) => l.leadId)
-}
-
 /**
  * Lead que el usuario puede GESTIONAR (editar).
  * - ADMIN / SUPERVISOR / BACK: cualquier lead dentro de su visibilidad normal
  *   (el admin/supervisor puede corregir cualquier lead de sus campañas).
- * - ASESOR: el lead que tiene asignado, o uno de sus ÚLTIMOS 5 gestionados
- *   (para recuperar/corregir una gestión reciente aunque ya volviera al pool).
+ * - ASESOR: el lead que tiene asignado, o uno de sus ÚLTIMOS 5 del historial
+ *   (mismo criterio y orden que la vista de historial, para no desincronizar).
  */
 async function getEditableLead(user: AuthUser, id: string) {
   if (user.role === 'ASESOR') {
     const lead = await prisma.lead.findUnique({ where: { id } })
     if (!lead) throw new HttpError(404, 'Lead no encontrado')
     if (lead.asignadoAId === user.userId) return lead
-    const recientes = await lastProcessedLeadIds(user.userId, 5)
-    if (recientes.includes(id)) return lead
+    const recuperables = await prisma.lead.findMany({
+      where: asesorHistorialWhere(user.userId, lead.campaignId),
+      orderBy: { updatedAt: 'desc' },
+      take: 5,
+      select: { id: true },
+    })
+    if (recuperables.some((l) => l.id === id)) return lead
     throw new HttpError(409, 'Solo puedes corregir el lead que tienes asignado o tus últimos 5 gestionados.')
   }
   const lead = await prisma.lead.findFirst({ where: { AND: [getLeadFilter(user), { id }] } })
@@ -75,19 +68,27 @@ const leadInclude = {
  *  - 'historial': leads que él procesó y que NO están asignados a otro asesor
  *    (si se reasignan a otro desaparecen; si vuelven a él, reaparecen).
  */
+/**
+ * Filtro del HISTORIAL del asesor: leads que él procesó y que no están asignados
+ * a otro (sin asesor, o suyos y finales). Se usa tanto para listar el historial
+ * como para validar qué puede recuperar/corregir (mismo criterio → sin desfases).
+ */
+function asesorHistorialWhere(userId: string, campaignId: string | null): Prisma.LeadWhereInput {
+  return {
+    ...(campaignId ? { campaignId } : {}),
+    processLogs: { some: { userId } },
+    OR: [
+      { asignadoAId: null },
+      { asignadoAId: userId, status: { in: FINAL_STATUSES } },
+    ],
+  }
+}
+
 function listAsesorLeads(user: AuthUser, campaignId: string | null, view: 'pendientes' | 'historial') {
-  const camp: Prisma.LeadWhereInput = campaignId ? { campaignId } : {}
   const where: Prisma.LeadWhereInput =
     view === 'historial'
-      ? {
-          ...camp,
-          processLogs: { some: { userId: user.userId } },
-          OR: [
-            { asignadoAId: null },
-            { asignadoAId: user.userId, status: { in: FINAL_STATUSES } },
-          ],
-        }
-      : { ...camp, asignadoAId: user.userId, status: { notIn: FINAL_STATUSES } }
+      ? asesorHistorialWhere(user.userId, campaignId)
+      : { ...(campaignId ? { campaignId } : {}), asignadoAId: user.userId, status: { notIn: FINAL_STATUSES } }
   return prisma.lead.findMany({ where, orderBy: { updatedAt: 'desc' }, include: leadInclude })
 }
 
