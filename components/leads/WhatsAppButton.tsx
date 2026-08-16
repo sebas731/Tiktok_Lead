@@ -1,6 +1,6 @@
 'use client'
 
-import { toDigits, waChatUrl, waGreeting } from '@/lib/leads/phone'
+import { toLocalDigits, waChatUrl, waGreeting } from '@/lib/leads/phone'
 
 function WhatsAppIcon() {
   return (
@@ -17,13 +17,16 @@ function WhatsAppIcon() {
  * ahí); si no existe, recién abre una nueva.
  */
 export function WhatsAppButton({ leadNumber, asesorName }: { leadNumber: string; asesorName: string }) {
-  const message = waGreeting(asesorName, toDigits(leadNumber))
+  const href = waChatUrl(leadNumber, waGreeting(asesorName, toLocalDigits(leadNumber)))
   return (
     <a
-      href={waChatUrl(leadNumber, message)}
-      target="whatsapp"
-      rel="noopener noreferrer"
-      onClick={(e) => e.stopPropagation()}
+      href={href}
+      onClick={(e) => {
+        e.preventDefault()
+        e.stopPropagation()
+        // Reutiliza la ventana de WhatsApp (target nombrado); si no existe, abre una.
+        window.open(href, 'whatsapp')
+      }}
       title="Abrir en WhatsApp"
       className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-emerald-600 transition hover:bg-emerald-50"
     >
