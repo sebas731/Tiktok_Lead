@@ -275,7 +275,8 @@ export async function selfAssignLead(user: AuthUser, campaignId: string) {
   for (let attempt = 0; attempt < 3; attempt++) {
     const now = new Date()
     const pool = availableLeadWhere(campaignId, now, campaign.allowNoContactoPull)
-    const order = [{ createdAt: 'desc' as const }, { id: 'desc' as const }]
+    // FIFO: los leads más VIEJOS sin gestión tienen prioridad (no se enfrían).
+    const order = [{ createdAt: 'asc' as const }, { id: 'asc' as const }]
     // Prioridad: primero SIN_GESTION (leads frescos); si no hay, cualquiera disponible.
     let next = await prisma.lead.findFirst({
       where: { ...pool, status: LEAD_STATUS.SIN_GESTION },
@@ -385,7 +386,8 @@ export async function assignLeads(user: AuthUser, input: AssignLeadsInput) {
     // Pool con enfriamiento/reserva respetados. Prioridad: primero SIN_GESTION.
     const now = new Date()
     const pool = availableLeadWhere(campaignId, now)
-    const order = [{ createdAt: 'desc' as const }, { id: 'desc' as const }]
+    // FIFO: los leads más VIEJOS sin gestión tienen prioridad (no se enfrían).
+    const order = [{ createdAt: 'asc' as const }, { id: 'asc' as const }]
     const frescos = await prisma.lead.findMany({
       where: { ...pool, status: LEAD_STATUS.SIN_GESTION },
       take: input.cantidad,
