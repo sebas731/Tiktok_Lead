@@ -32,6 +32,7 @@ const NAV_BY_ROLE: Record<Role, NavItem[]> = {
   ],
   ASESOR: [
     { href: '/dashboard/campaigns', label: 'Campañas', icon: 'campaigns' },
+    { href: '/dashboard/perfil', label: 'Mi perfil', icon: 'perfil' },
     { href: '/dashboard/settings', label: 'Configuración', icon: 'settings' },
   ],
   BACK: [
