@@ -281,7 +281,7 @@ export async function selfAssignLead(user: AuthUser, campaignId: string) {
     let next = await prisma.lead.findFirst({
       where: { ...pool, status: LEAD_STATUS.SIN_GESTION },
       orderBy: order,
-      select: { id: true, asignadoAId: true },
+      select: { id: true, asignadoAId: true, status: true },
     })
     if (!next) {
       next = await prisma.lead.findFirst({
@@ -293,15 +293,18 @@ export async function selfAssignLead(user: AuthUser, campaignId: string) {
           NOT: { status: LEAD_STATUS.NO_CONTACTO, processLogs: { some: { userId: user.userId } } },
         },
         orderBy: order,
-        select: { id: true, asignadoAId: true },
+        select: { id: true, asignadoAId: true, status: true },
       })
     }
     if (!next) throw new HttpError(404, 'No hay leads disponibles para atender en esta campaña')
 
     // Guardia de concurrencia: solo lo toma si sigue en el estado que vimos.
+    // Si es un AGENDADO, le damos su reserva de 24 h (si no, la limpieza de
+    // agendados vencidos lo soltaría de inmediato al tener reservedUntil nulo).
+    const reservedUntil = next.status === LEAD_STATUS.AGENDADO ? new Date(Date.now() + 24 * HOUR) : null
     const res = await prisma.lead.updateMany({
       where: { id: next.id, asignadoAId: next.asignadoAId },
-      data: { asignadoAId: user.userId, reservedUntil: null },
+      data: { asignadoAId: user.userId, reservedUntil },
     })
     if (res.count === 1) {
       await prisma.leadAssignment.create({
@@ -413,6 +416,12 @@ export async function assignLeads(user: AuthUser, input: AssignLeadsInput) {
 
   await prisma.$transaction([
     prisma.lead.updateMany({ where: { id: { in: leadIds } }, data: { asignadoAId: asesorId, reservedUntil: null } }),
+    // Los AGENDADO asignados conservan su reserva de 24 h (si no, la limpieza de
+    // agendados vencidos los soltaría de inmediato por tener reservedUntil nulo).
+    prisma.lead.updateMany({
+      where: { id: { in: leadIds }, status: LEAD_STATUS.AGENDADO },
+      data: { reservedUntil: new Date(Date.now() + 24 * HOUR) },
+    }),
     prisma.leadAssignment.createMany({
       data: leadIds.map((leadId) => ({ leadId, asesorId, asignadoPorId: user.userId })),
     }),
