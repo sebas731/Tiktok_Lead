@@ -93,7 +93,10 @@ function listAsesorLeads(user: AuthUser, campaignId: string | null, view: 'pendi
 }
 
 /** Lista leads visibles según rol, con filtros opcionales por campaña, status y asesor. */
-export function listLeads(user: AuthUser, filters: LeadFilters) {
+export async function listLeads(user: AuthUser, filters: LeadFilters) {
+  // Antes de listar, suelta los AGENDADO vencidos: así dejan la bandeja del asesor
+  // y vuelven al pool automáticamente (sin depender de que alguien los tome).
+  await releaseExpiredAgendados()
   if (user.role === 'ASESOR' && filters.asesorView) {
     return listAsesorLeads(user, filters.campaignId ?? null, filters.asesorView)
   }
@@ -123,6 +126,25 @@ export function listLeads(user: AuthUser, filters: LeadFilters) {
 }
 
 const HOUR = 60 * 60 * 1000
+
+/**
+ * Suelta los AGENDADO cuya reserva de 24 h ya venció (o los antiguos sin reserva):
+ * los DESASIGNA para que dejen la bandeja del asesor y vuelvan al pool. Antes esto
+ * era pasivo (solo entraban al pool) y por eso seguían apareciendo en la lista del
+ * asesor. Idempotente y barato (updateMany, normalmente 0 filas). Devuelve cuántos
+ * liberó.
+ */
+export async function releaseExpiredAgendados(): Promise<number> {
+  const res = await prisma.lead.updateMany({
+    where: {
+      status: LEAD_STATUS.AGENDADO,
+      asignadoAId: { not: null },
+      OR: [{ reservedUntil: null }, { reservedUntil: { lt: new Date() } }],
+    },
+    data: { asignadoAId: null, reservedUntil: null },
+  })
+  return res.count
+}
 
 /**
  * Leads que se pueden tomar del pool ahora mismo:
