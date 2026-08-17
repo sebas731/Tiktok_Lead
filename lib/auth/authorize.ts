@@ -42,6 +42,19 @@ export async function requireRole(roles: Role[]): Promise<AuthUser> {
 }
 
 /**
+ * ¿El usuario puede VER/entrar a esta campaña? Usa el mismo filtro que la lista
+ * (ADMIN todas; SUPERVISOR/BACK las asignadas; ASESOR asignada o con lead activo).
+ * Sirve para bloquear el acceso directo por URL si le quitaron el acceso.
+ */
+export async function canSeeCampaign(user: AuthUser, campaignId: string): Promise<boolean> {
+  if (user.role === 'ADMIN') return true
+  const count = await prisma.campaign.count({
+    where: { AND: [getCampaignFilter(user), { campaign_id: campaignId }] },
+  })
+  return count > 0
+}
+
+/**
  * Exige que el usuario pueda gestionar la campaña: ADMIN cualquiera; SUPERVISOR
  * solo las que tiene asignadas (CampaignAssignment). Lanza 403 si no.
  */
@@ -68,11 +81,21 @@ export function getCampaignFilter(user: AuthUser): Prisma.CampaignWhereInput {
     case 'BACK':
       return { campaignAssignments: { some: { userId: user.userId } } }
     case 'ASESOR':
-      // Asignado a la campaña, o con al menos un lead suyo en ella.
+      // Asignado a la campaña, o con al menos un lead ACTIVO (no final) suyo en
+      // ella. Los leads finales (POSITIVO/NEGATIVO) por sí solos no mantienen la
+      // campaña visible: así, al quitarle el acceso y soltar sus leads activos,
+      // la campaña desaparece (pero se conserva su historial/atribución).
       return {
         OR: [
           { campaignAssignments: { some: { userId: user.userId } } },
-          { lead: { some: { asignadoAId: user.userId } } },
+          {
+            lead: {
+              some: {
+                asignadoAId: user.userId,
+                status: { notIn: [LEAD_STATUS.POSITIVO, LEAD_STATUS.NEGATIVO] },
+              },
+            },
+          },
         ],
       }
     default:

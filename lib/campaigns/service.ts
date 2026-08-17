@@ -157,5 +157,16 @@ export async function assignUserToCampaign(actor: AuthUser, campaignId: string, 
 export async function removeCampaignUser(actor: AuthUser, campaignId: string, userId: string) {
   await assertCanManageCampaignUsers(actor, campaignId)
   await prisma.campaignAssignment.deleteMany({ where: { campaignId, userId } })
+  // Suelta los leads ACTIVOS (no finales) que ese usuario tuviera asignados en la
+  // campaña: vuelven al pool y la campaña deja de aparecerle. Los finales se
+  // conservan (historial/atribución). Para SUPERVISOR/BACK no afecta (0 filas).
+  await prisma.lead.updateMany({
+    where: {
+      campaignId,
+      asignadoAId: userId,
+      status: { notIn: [LEAD_STATUS.POSITIVO, LEAD_STATUS.NEGATIVO] },
+    },
+    data: { asignadoAId: null, reservedUntil: null },
+  })
   return { removed: true }
 }
