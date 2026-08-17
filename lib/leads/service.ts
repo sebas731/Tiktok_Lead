@@ -107,7 +107,7 @@ export async function listLeads(user: AuthUser, filters: LeadFilters) {
   if (filters.asignadoA) extra.asignadoAId = filters.asignadoA
   return prisma.lead.findMany({
     where: { AND: [getLeadFilter(user), extra] },
-    orderBy: { id: 'asc' },
+    orderBy: { createdAt: 'asc' }, // orden de creación/caída (los más viejos primero)
     include: {
       asignadoA: { select: { user_id: true, name: true, document_number:true,first_last_name:true,second_last_name:true} },
       sale: { select: { id_sale: true } },

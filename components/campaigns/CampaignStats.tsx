@@ -3,8 +3,11 @@ export type Breakdown = {
   sinGestion: number
   noContacto: number
   agendado: number
+  positivo: number
   positivoSinVenta: number
   negativo: number
+  nuevos5min: number
+  total: number
 }
 
 function Chip({ label, value, tone }: { label: string; value: number; tone: string }) {
