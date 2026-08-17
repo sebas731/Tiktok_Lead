@@ -223,18 +223,22 @@ export async function updateLead(user: AuthUser, id: string, input: Record<strin
 
   // Write-back al Sheet en SEGUNDO PLANO: no se espera ni puede romper/retrasar
   // la gestión. Si el Sheet no es escribible o falla, el lead ya quedó guardado.
-  void syncLeadStatusToSheet(lead.campaignId, lead.client_number, status, subStatus)
+  // Se pasa el usuario que gestionó para escribir la columna ASESOR.
+  void syncLeadStatusToSheet(lead.campaignId, lead.client_number, status, subStatus, user.userId)
 
   return updated
 }
 
-/** Escribe estado/sub-estado en el Sheet (best-effort). Nunca lanza. */
-async function syncLeadStatusToSheet(campaignId: string, clientNumber: string, status: string, subStatus: string) {
+/** Escribe estado/sub-estado y el asesor en el Sheet (best-effort). Nunca lanza. */
+async function syncLeadStatusToSheet(campaignId: string, clientNumber: string, status: string, subStatus: string, userId: string) {
   try {
-    const camp = await prisma.campaign.findUnique({
-      where: { campaign_id: campaignId },
-      select: { source: true, sheetAccessMode: true, excelUrl: true, excelGid: true, excelSheetName: true },
-    })
+    const [camp, u] = await Promise.all([
+      prisma.campaign.findUnique({
+        where: { campaign_id: campaignId },
+        select: { source: true, sheetAccessMode: true, excelUrl: true, excelGid: true, excelSheetName: true },
+      }),
+      prisma.user.findUnique({ where: { user_id: userId }, select: { name: true, first_last_name: true } }),
+    ])
     if (camp?.source !== 'EXCEL' || camp.sheetAccessMode !== 'SERVICE_ACCOUNT' || !camp.excelUrl || !camp.excelGid) return
     await writeLeadStatusToSheet({
       url: camp.excelUrl,
@@ -244,6 +248,7 @@ async function syncLeadStatusToSheet(campaignId: string, clientNumber: string, s
       clientNumber,
       estado: STATUS_LABELS[status] ?? status,
       subEstado: SUBSTATUS_LABELS[subStatus] ?? subStatus,
+      asesor: u ? `${u.name} ${u.first_last_name}`.trim() : '',
     })
   } catch {
     // Silencioso: el Sheet no debe afectar el funcionamiento del sistema.

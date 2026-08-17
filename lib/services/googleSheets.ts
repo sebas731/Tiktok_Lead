@@ -200,6 +200,7 @@ export async function writeLeadStatusToSheet(opts: {
   clientNumber: string
   estado: string
   subEstado: string
+  asesor: string
 }): Promise<void> {
   if (opts.mode !== 'SERVICE_ACCOUNT' || !serviceAccountConfigured()) return
   const spreadsheetId = parseSpreadsheetId(opts.url)
@@ -229,14 +230,17 @@ export async function writeLeadStatusToSheet(opts: {
 
   let estadoCol = header.findIndex((h) => /^\s*estado\s*$/i.test(h))
   let subCol = header.findIndex((h) => /sub[\s_-]*estado/i.test(h))
+  let asesorCol = header.findIndex((h) => /^\s*asesor\s*$/i.test(h))
   const data: { range: string; values: string[][] }[] = []
   let nextNew = header.length
   if (estadoCol < 0) { estadoCol = nextNew++; data.push({ range: `${safeTitle}!${colLetter(estadoCol)}1`, values: [['ESTADO']] }) }
   if (subCol < 0) { subCol = nextNew++; data.push({ range: `${safeTitle}!${colLetter(subCol)}1`, values: [['SUB-ESTADO']] }) }
+  if (asesorCol < 0) { asesorCol = nextNew++; data.push({ range: `${safeTitle}!${colLetter(asesorCol)}1`, values: [['ASESOR']] }) }
 
   const sheetRow = rowIdx + 1 // fila real (1-based)
   data.push({ range: `${safeTitle}!${colLetter(estadoCol)}${sheetRow}`, values: [[opts.estado]] })
   data.push({ range: `${safeTitle}!${colLetter(subCol)}${sheetRow}`, values: [[opts.subEstado]] })
+  data.push({ range: `${safeTitle}!${colLetter(asesorCol)}${sheetRow}`, values: [[opts.asesor]] })
 
   await sheets.spreadsheets.values.batchUpdate({
     spreadsheetId,
