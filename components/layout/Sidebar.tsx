@@ -133,8 +133,9 @@ export function Sidebar({
     <aside className={`${asideBase} ${asideMode}`}>
       {/* Cabecera: logo + toggle */}
       <div className={`relative z-10 mb-6 flex items-center gap-3 ${collapsed ? 'flex-col' : 'px-2 pt-1'}`}>
-        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-brand-red to-brand-red-dk text-sm font-bold text-white shadow-sm ring-1 ring-white/20">
-          CK2
+        <div className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-black/5">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/logo.ico" alt="CK2" className="h-full w-full object-contain p-1" />
         </div>
         {!collapsed && (
           <div className="min-w-0 flex-1">
