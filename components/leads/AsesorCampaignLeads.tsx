@@ -14,6 +14,7 @@ import type { Campaign, Lead, Me } from '@/lib/types'
 import { LeadDetailModal } from './LeadDetailModal'
 import { WhatsAppButton } from './WhatsAppButton'
 import { RecoverHelpModal } from './RecoverHelpModal'
+import { LeadInfoModal } from './LeadInfoModal'
 
 // En el historial solo se pueden recuperar/corregir los N leads más recientes.
 const RECOVERABLE = 5
@@ -30,6 +31,8 @@ export function AsesorCampaignLeads({ campaignId }: { campaignId: string }) {
   const [notice, setNotice] = useState('')
   const [assigning, setAssigning] = useState(false)
   const [helpOpen, setHelpOpen] = useState(false)
+  const [infoOpen, setInfoOpen] = useState(false)
+  const [soltando, setSoltando] = useState('')
   const [highlightId, setHighlightId] = useState('')
   const [error, setError] = useState('')
 
@@ -106,6 +109,25 @@ export function AsesorCampaignLeads({ campaignId }: { campaignId: string }) {
   const isAuto = campaign?.leadMode === 'AUTO'
   const campaignName = campaign?.name ?? leads[0]?.campaign?.name ?? 'la campaña'
 
+  // Soltar un lead: lo devuelve al pool como NO_CONTACTO (no contactó), con su
+  // enfriamiento de 5 h, para que otro asesor lo tome.
+  async function soltar(l: Lead) {
+    if (!window.confirm(`¿Soltar el lead ${l.client_number}? Volverá al pool como "no contacto".`)) return
+    setSoltando(l.id)
+    setError('')
+    try {
+      await apiSend(`/api/leads/${l.id}`, 'PATCH', { status: 'NO_CONTACTO', sub_status: 'NO_CONTESTA' })
+      setNotice(`Soltaste el lead ${l.client_number}.`)
+      load(tab)
+      refreshPending()
+      refreshAvailable()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Error al soltar')
+    } finally {
+      setSoltando('')
+    }
+  }
+
   async function selfAssign() {
     setAssigning(true)
     setNotice('')
@@ -147,6 +169,23 @@ export function AsesorCampaignLeads({ campaignId }: { campaignId: string }) {
       header: 'WhatsApp',
       render: (l) => <WhatsAppButton leadNumber={l.client_number} asesorName={asesorName} />,
     },
+    ...(tab === 'pendientes'
+      ? [{
+          key: 'soltar',
+          header: '',
+          render: (l: Lead) => (
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); soltar(l) }}
+              disabled={soltando === l.id}
+              title="Devolver el lead al pool (no contactó)"
+              className="rounded-lg border border-border px-2.5 py-1 text-xs font-medium text-text-muted transition hover:bg-bg hover:text-text disabled:opacity-50"
+            >
+              Soltar
+            </button>
+          ),
+        }]
+      : []),
     ...(tab === 'historial'
       ? [{
           key: 'recuperar',
@@ -187,7 +226,7 @@ export function AsesorCampaignLeads({ campaignId }: { campaignId: string }) {
       {isAuto && pendingCount > 0 && (
         <p className="mb-3 text-sm text-text-muted">Termina tu lead pendiente antes de tomar otro.</p>
       )}
-      <div className="mb-4">
+      <div className="mb-4 flex items-center justify-between gap-3">
         <Tabs
           tabs={[
             { id: 'pendientes', label: 'Por atender' },
@@ -196,6 +235,7 @@ export function AsesorCampaignLeads({ campaignId }: { campaignId: string }) {
           active={tab}
           onChange={setTab}
         />
+        <Button variant="secondary" onClick={() => setInfoOpen(true)}>Info: estados y reglas</Button>
       </div>
       {tab === 'historial' && (
         <div className="mb-3 flex items-center gap-2 text-sm text-text-muted">
@@ -233,6 +273,7 @@ export function AsesorCampaignLeads({ campaignId }: { campaignId: string }) {
         />
       )}
       {helpOpen && <RecoverHelpModal onClose={() => setHelpOpen(false)} />}
+      {infoOpen && <LeadInfoModal onClose={() => setInfoOpen(false)} />}
     </div>
   )
 }
