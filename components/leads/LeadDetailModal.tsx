@@ -53,6 +53,8 @@ export function LeadDetailModal({ lead, onClose, onSaved, onRegisterVenta }: Pro
         observations,
         reason,
       })
+      // Refresca las rachas de la barra superior (una venta puede cambiarlas).
+      window.dispatchEvent(new Event('ck2:streaks-refresh'))
       onSaved()
       onClose()
     } catch (e) {

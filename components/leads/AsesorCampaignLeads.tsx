@@ -117,6 +117,8 @@ export function AsesorCampaignLeads({ campaignId }: { campaignId: string }) {
     setError('')
     try {
       await apiSend(`/api/leads/${l.id}`, 'PATCH', { status: 'NO_CONTACTO', sub_status: 'NO_CONTESTA' })
+      // Soltar corta la racha de ventas: refresca la barra superior.
+      window.dispatchEvent(new Event('ck2:streaks-refresh'))
       setNotice(`Soltaste el lead ${l.client_number}.`)
       load(tab)
       refreshPending()

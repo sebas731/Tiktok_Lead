@@ -2,6 +2,7 @@
 
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/Button'
+import { StreakChips } from '@/components/perfil/StreakChips'
 
 type Sede = { sede_id: string; code: string; name: string }
 
@@ -53,6 +54,7 @@ export function TopBar({ name, role, sedes = [], activeSede = '', onChangeSede, 
         )}
       </div>
       <div className="flex items-center gap-3">
+        {role === 'ASESOR' && <StreakChips />}
         <div className="flex items-center gap-2.5 rounded-2xl bg-bg/60 py-1 pl-1 pr-3 ring-1 ring-border/70">
           <span className="flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-br from-brand-red to-brand-red-dk text-xs font-bold text-white">
             {name.trim().slice(0, 2).toUpperCase()}
