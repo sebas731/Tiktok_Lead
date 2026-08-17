@@ -27,7 +27,23 @@ export function CampaignLeadsView({ campaignId, role }: { campaignId: string; ro
   const [assign, setAssign] = useState<{ open: boolean; ids: string[] }>({ open: false, ids: [] })
   const [recoverOpen, setRecoverOpen] = useState(false)
   const [detail, setDetail] = useState<Lead | null>(null)
+  const [soltando, setSoltando] = useState('')
   const [error, setError] = useState('')
+
+  // Soltar: devuelve el lead al pool como NO_CONTACTO (no contactó), enfriamiento 5 h.
+  async function soltar(l: Lead) {
+    if (!window.confirm(`¿Soltar el lead ${l.client_number}? Volverá al pool como "no contacto".`)) return
+    setSoltando(l.id)
+    setError('')
+    try {
+      await apiSend(`/api/leads/${l.id}`, 'PATCH', { status: 'NO_CONTACTO', sub_status: 'NO_CONTESTA' })
+      load()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Error al soltar')
+    } finally {
+      setSoltando('')
+    }
+  }
 
   useEffect(() => {
     if (isSupervisor) apiGet<Me>('/api/auth/me').then((m) => setMeId(m.user_id)).catch(() => {})
@@ -111,6 +127,26 @@ export function CampaignLeadsView({ campaignId, role }: { campaignId: string; ro
         return last ? userLabel(last.user) : '—'
       },
     },
+    ...(canAssign
+      ? [{
+          key: 'soltar',
+          header: '',
+          render: (l: Lead) =>
+            l.asignadoAId ? (
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); soltar(l) }}
+                disabled={soltando === l.id}
+                title="Devolver el lead al pool (no contactó)"
+                className="rounded-lg border border-border px-2.5 py-1 text-xs font-medium text-text-muted transition hover:bg-bg hover:text-text disabled:opacity-50"
+              >
+                Soltar
+              </button>
+            ) : (
+              <span className="text-xs text-text-muted">—</span>
+            ),
+        }]
+      : []),
   ]
 
   return (

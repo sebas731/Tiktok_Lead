@@ -1,7 +1,6 @@
 'use client'
 
-import { Modal } from '@/components/ui/Modal'
-import { Button } from '@/components/ui/Button'
+import { PageHeader } from '@/components/layout/PageHeader'
 import { Badge, leadStatusTone } from '@/components/ui/Badge'
 import { STATUS_LABELS } from '@/lib/constants/leads'
 
@@ -16,17 +15,23 @@ function Estado({ status, children }: { status: string; children: React.ReactNod
   )
 }
 
-function Titulo({ children }: { children: React.ReactNode }) {
-  return <h3 className="mb-2 text-sm font-semibold text-text">{children}</h3>
+function Card({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <section className="rounded-3xl border border-border bg-surface p-5 shadow-soft">
+      <h3 className="mb-3 text-sm font-semibold text-text">{title}</h3>
+      {children}
+    </section>
+  )
 }
 
-/** Ventana informativa para el asesor: estados de los leads, reglas y qué puede hacer. */
-export function LeadInfoModal({ onClose }: { onClose: () => void }) {
+/** Página de información: estados de los leads, reglas y qué puede hacer el asesor. */
+export function InfoView() {
   return (
-    <Modal open onClose={onClose} size="xl" title="Estados de los leads y reglas" actions={<Button onClick={onClose}>Entendido</Button>}>
-      <div className="flex flex-col gap-6">
-        <section>
-          <Titulo>Estados de un lead</Titulo>
+    <div>
+      <PageHeader title="Información" description="Estados de los leads, reglas y qué puedes hacer." />
+
+      <div className="flex flex-col gap-4">
+        <Card title="Estados de un lead">
           <ul className="flex flex-col gap-2.5">
             <Estado status="SIN_GESTION">Lead nuevo, aún sin atender.</Estado>
             <Estado status="NO_CONTACTO">No contestó o celular apagado. Vuelve al pool con 5 h de enfriamiento.</Estado>
@@ -34,10 +39,9 @@ export function LeadInfoModal({ onClose }: { onClose: () => void }) {
             <Estado status="POSITIVO">Venta cerrada. Es un estado final (queda en tu historial).</Estado>
             <Estado status="NEGATIVO">No califica / no interesa. Estado final (historial).</Estado>
           </ul>
-        </section>
+        </Card>
 
-        <section>
-          <Titulo>Reglas que aplicamos</Titulo>
+        <Card title="Reglas que aplicamos">
           <ul className="flex list-disc flex-col gap-1.5 pl-5 text-sm text-text-muted">
             <li>Al pulsar <b>«Asignarme un lead»</b> se te prioriza un lead <b>SIN GESTIÓN</b> (nuevo); si no hay, te damos otro disponible.</li>
             <li>Solo puedes tener <b>un lead sin gestionar a la vez</b>: termínalo antes de tomar otro.</li>
@@ -46,10 +50,9 @@ export function LeadInfoModal({ onClose }: { onClose: () => void }) {
             <li>Los estados <b>POSITIVO</b> y <b>NEGATIVO</b> son finales (quedan en el historial).</li>
             <li>Los <b>domingos</b> no cuentan para la racha diaria (no se trabaja).</li>
           </ul>
-        </section>
+        </Card>
 
-        <section>
-          <Titulo>Qué puedes hacer</Titulo>
+        <Card title="Qué puedes hacer">
           <ul className="flex list-disc flex-col gap-1.5 pl-5 text-sm text-text-muted">
             <li><b>Asignarte un lead</b> (en campañas automáticas) con el botón «Asignarme un lead».</li>
             <li><b>Gestionarlo</b>: cambiar estado, sub-estado y observaciones desde su ventana.</li>
@@ -58,8 +61,8 @@ export function LeadInfoModal({ onClose }: { onClose: () => void }) {
             <li><b>Recuperar</b> tus últimos 5 leads gestionados desde la pestaña «Historial».</li>
             <li>Ver tus <b>rachas</b> en «Mi perfil».</li>
           </ul>
-        </section>
+        </Card>
       </div>
-    </Modal>
+    </div>
   )
 }
