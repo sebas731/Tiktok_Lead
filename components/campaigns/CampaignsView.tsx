@@ -9,6 +9,7 @@ import { PageHeader } from '@/components/layout/PageHeader'
 import { apiGet, apiSend } from '@/lib/api/client'
 import type { Campaign, Role } from '@/lib/types'
 import { CampaignFormModal } from './CampaignFormModal'
+import { CampaignStats, type Breakdown } from './CampaignStats'
 
 export function CampaignsView({ role }: { role: Role }) {
   const router = useRouter()
@@ -16,6 +17,7 @@ export function CampaignsView({ role }: { role: Role }) {
   const isAsesor = role === 'ASESOR'
   const isSupervisor = role === 'SUPERVISOR'
   const [campaigns, setCampaigns] = useState<Campaign[]>([])
+  const [stats, setStats] = useState<Record<string, Breakdown>>({})
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
   const [syncing, setSyncing] = useState('')
@@ -27,6 +29,12 @@ export function CampaignsView({ role }: { role: Role }) {
       .catch((e) => setError(e instanceof Error ? e.message : 'Error'))
   }
   useEffect(load, [])
+
+  // Desglose por estado (solo admin/supervisor): una sola consulta para todas.
+  useEffect(() => {
+    if (isAsesor) return
+    apiGet<Record<string, Breakdown>>('/api/leads/stats').then(setStats).catch(() => {})
+  }, [isAsesor])
 
   async function toggleStatus(c: Campaign) {
     await apiSend(`/api/campaigns/${c.campaign_id}`, 'PATCH', { status: !c.status })
@@ -98,6 +106,7 @@ export function CampaignsView({ role }: { role: Role }) {
                 </div>
                 <Badge tone={c.status ? 'positivo' : 'neutral'}>{c.status ? 'Activa' : 'Inactiva'}</Badge>
               </div>
+              {!isAsesor && <CampaignStats b={stats[c.campaign_id]} />}
               {isAdmin && (
                 <div className="mt-4 flex flex-wrap gap-1 border-t border-border pt-3" onClick={stop}>
                   <Button variant="ghost" onClick={() => setForm({ open: true, campaign: c })}>Editar</Button>

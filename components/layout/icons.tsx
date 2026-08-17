@@ -28,4 +28,5 @@ export const Icons: Record<string, (p: IconProps) => React.ReactElement> = {
   reportes: (p) => <P className={p.className} d="M21 21H3V3M7 15l4-4 3 3 5-6" />,
   perfil: (p) => <P className={p.className} d="M12 2c1.5 4 5 6 5 10a5 5 0 11-10 0c0-3 1.2-4.5 2.6-6 .3 2 1.6 2.7 2.4 2.1C13 9 12.6 5.5 12 2z" />,
   info: (p) => <P className={p.className} d="M12 22a10 10 0 100-20 10 10 0 000 20zM12 8h.01M11 12h1v4h1" />,
+  panel: (p) => <P className={p.className} d="M3 3h8v8H3zM13 3h8v5h-8zM13 12h8v9h-8zM3 13h8v8H3z" />,
 }
