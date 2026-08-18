@@ -1,7 +1,7 @@
 
 export type WebhookLead = {
-  number: string
+  celular: string
   campaignId: string
   campaignName?: string  
-  origin: string
+  origen: string
 }

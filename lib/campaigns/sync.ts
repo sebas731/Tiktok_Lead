@@ -3,6 +3,7 @@ import { Prisma } from '@/lib/generated/prisma/client'
 import { HttpError } from '@/lib/api/response'
 import { readSheetRows, findTabByGid, serviceAccountConfigured } from '@/lib/services/googleSheets'
 import type { CampaignSyncSummary } from '@/lib/types'
+import { WebhookLeads } from '@/lib/webhooks/service'
 
 const digits = (s: string) => (s.match(/\d/g) || []).length
 
@@ -191,6 +192,16 @@ export async function syncExcelCampaign(campaignId: string): Promise<CampaignSyn
             errors.push({ row: c.row, reason: e instanceof Error ? e.message : 'Error al insertar' })
           }
         }
+      }
+    }
+    //Trigger de POST al thor de Jesus
+    if (nuevos.length > 0) {
+      const creados = await prisma.lead.findMany({
+        where: { campaignId, client_number: { in: nuevos.map((c) => c.client_number) } },
+        select: { id: true },
+      })
+      for (const l of creados) {
+        void WebhookLeads(l.id)   // dispara y no espera
       }
     }
 

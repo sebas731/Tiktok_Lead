@@ -1,24 +1,38 @@
 import { prisma } from '@/lib/prisma'
 import { WebhookLead } from './types'
 
-export async function WebhookLeads(): Promise<void> {
+export async function WebhookLeads(lead_id:string): Promise<void> {
+
+    const Campanias = Object.freeze({
+        T4:       { id: '3e4e5da9-f4dd-46b8-a6fa-bc34f504c2d3', slug: 'c1' },
+        T3:       { id: 'camp_1092', slug: 's2' },
+        T6:       { id: 'camp_1092', slug: 's6' },
+        T1:       { id: 'camp_1092', slug: 's3' },
+    });
 
     const lead = await prisma.lead.findUnique({
-        where: {id:"703c6b67-0565-4c9e-a43b-5b9a2366b1a3"},
+        where: {id:lead_id},
         select: { client_number:true ,campaignId:true, campaign:{ select: {name:true} }}
     })
 
     if (!lead) return
 
     const payload: WebhookLead = {
-        number : lead.client_number,
+        celular : lead.client_number,
         campaignId : lead.campaignId,
         campaignName : lead.campaign?.name,
-        origin : 'Tiktok',
+        origen : 'Tiktok',
 
-    }
+    };
+
+    const campanignEntrie = Object.values(Campanias).find(
+        (c) => c.id === lead.campaignId
+    );
     
-    const res = await fetch (process.env.WEBHOOK_URL!,{
+    if (!campanignEntrie)return;
+
+    const url = `${process.env.WEBHOOK_URL}/${campanignEntrie?.slug}/ads`
+    const res = await fetch (url,{
 
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Token': process.env.WEBHOOK_TOKEN! },
@@ -27,5 +41,6 @@ export async function WebhookLeads(): Promise<void> {
     })
 
     console.log(res.status)
+
+};
     
-}
