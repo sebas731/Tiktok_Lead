@@ -157,9 +157,16 @@ export function PanelView() {
               </button>
             )}
           </div>
+          {detail && (
+            <div className="mb-3 inline-flex items-center gap-2 rounded-xl border border-brand-red/30 bg-brand-red/5 px-4 py-2">
+              <span className="text-2xl font-bold text-brand-red">{detail.total}</span>
+              <span className="text-sm text-text-muted">
+                {dDesde || dHasta || dCampaign || dStatus ? 'leads en la selección' : 'leads en total'}
+              </span>
+            </div>
+          )}
           <Table columns={detailCols} rows={detail?.rows ?? []} getRowKey={(d) => d.id} emptyMessage="Sin leads con estos filtros." />
           <Pagination page={detail?.page ?? 1} totalPages={detail?.totalPages ?? 1} onChange={setDPage} />
-          {detail && <p className="mt-2 text-xs text-text-muted">{detail.total} lead(s) en total.</p>}
         </>
       )}
     </div>
