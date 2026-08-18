@@ -13,6 +13,8 @@ export async function GET(req: NextRequest) {
         status: searchParams.get('status'),
         campaignId: searchParams.get('campaignId'),
         order: searchParams.get('order') === 'desc' ? 'desc' : 'asc',
+        desde: searchParams.get('desde'),
+        hasta: searchParams.get('hasta'),
       }),
     )
   } catch (e) {

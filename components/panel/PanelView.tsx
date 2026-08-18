@@ -35,6 +35,8 @@ export function PanelView() {
   const [dCampaign, setDCampaign] = useState('')
   const [dStatus, setDStatus] = useState('')
   const [dOrder, setDOrder] = useState<'asc' | 'desc'>('asc')
+  const [dDesde, setDDesde] = useState('')
+  const [dHasta, setDHasta] = useState('')
   const [dPage, setDPage] = useState(1)
   const [detail, setDetail] = useState<DetailResp | null>(null)
 
@@ -59,8 +61,10 @@ export function PanelView() {
     const p = new URLSearchParams({ page: String(dPage), order: dOrder })
     if (dCampaign) p.set('campaignId', dCampaign)
     if (dStatus) p.set('status', dStatus)
+    if (dDesde) p.set('desde', dDesde)
+    if (dHasta) p.set('hasta', dHasta)
     apiGet<DetailResp>(`/api/leads/detail?${p.toString()}`).then(setDetail).catch(() => {})
-  }, [dPage, dOrder, dCampaign, dStatus])
+  }, [dPage, dOrder, dCampaign, dStatus, dDesde, dHasta])
   useEffect(() => { if (view === 'detalle') loadDetail() }, [view, loadDetail])
 
   const totals = rows.reduce(
@@ -136,6 +140,22 @@ export function PanelView() {
               <Select label="Orden (por creación)" value={dOrder} onChange={(v) => { setDOrder(v as 'asc' | 'desc'); setDPage(1) }}
                 options={[{ value: 'asc', label: 'Más viejos primero' }, { value: 'desc', label: 'Más nuevos primero' }]} />
             </div>
+            <div className="flex flex-col gap-1.5">
+              <label className="text-sm font-medium text-gray-700">Desde (fecha y hora)</label>
+              <input type="datetime-local" value={dDesde} onChange={(e) => { setDDesde(e.target.value); setDPage(1) }}
+                className="rounded-lg border border-border bg-white px-3 py-2 text-sm outline-none focus:border-brand-red" />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <label className="text-sm font-medium text-gray-700">Hasta (fecha y hora)</label>
+              <input type="datetime-local" value={dHasta} onChange={(e) => { setDHasta(e.target.value); setDPage(1) }}
+                className="rounded-lg border border-border bg-white px-3 py-2 text-sm outline-none focus:border-brand-red" />
+            </div>
+            {(dDesde || dHasta) && (
+              <button type="button" onClick={() => { setDDesde(''); setDHasta(''); setDPage(1) }}
+                className="rounded-lg border border-border px-3 py-2 text-sm text-text-muted transition hover:bg-bg">
+                Limpiar fechas
+              </button>
+            )}
           </div>
           <Table columns={detailCols} rows={detail?.rows ?? []} getRowKey={(d) => d.id} emptyMessage="Sin leads con estos filtros." />
           <Pagination page={detail?.page ?? 1} totalPages={detail?.totalPages ?? 1} onChange={setDPage} />

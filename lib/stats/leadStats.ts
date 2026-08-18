@@ -101,9 +101,17 @@ export type LeadDetailFilters = {
   status?: string | null
   campaignId?: string | null
   order?: 'asc' | 'desc' // por createdAt (asc = más viejos primero / orden de caída)
+  desde?: string | null // fecha/hora de Lima 'YYYY-MM-DDTHH:mm' (o solo 'YYYY-MM-DD')
+  hasta?: string | null
 }
 
 const PAGE_SIZE = 25
+
+/** Convierte una fecha/hora de LIMA ('YYYY-MM-DD' o 'YYYY-MM-DDTHH:mm') a instante UTC. */
+function limaLocalToUtc(v: string): Date {
+  const s = v.length <= 10 ? `${v}T00:00` : v.slice(0, 16) // completa hora si viene solo fecha
+  return new Date(`${s}:00.000-05:00`) // -05:00 = zona de Lima
+}
 
 /**
  * Listado detallado de leads (paginado) para consulta del supervisor/admin,
@@ -111,11 +119,15 @@ const PAGE_SIZE = 25
  */
 export async function leadDetail(user: AuthUser, f: LeadDetailFilters) {
   const page = Math.max(1, f.page ?? 1)
+  const createdAt: { gte?: Date; lte?: Date } = {}
+  if (f.desde) createdAt.gte = limaLocalToUtc(f.desde)
+  if (f.hasta) createdAt.lte = limaLocalToUtc(f.hasta)
   const where = {
     AND: [
       getLeadFilter(user),
       f.campaignId ? { campaignId: f.campaignId } : {},
       f.status ? { status: f.status as LEAD_STATUS } : {},
+      f.desde || f.hasta ? { createdAt } : {},
     ],
   }
   const [rows, total] = await Promise.all([
