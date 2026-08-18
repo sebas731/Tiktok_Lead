@@ -12,7 +12,7 @@ import { STATUS_LABELS, STATUS_OPTIONS, SUBSTATUS_LABELS } from '@/lib/constants
 import type { Campaign } from '@/lib/types'
 import type { Breakdown } from '@/components/campaigns/CampaignStats'
 
-type Row = Breakdown & { name: string }
+type Row = Breakdown & { name: string; descartados: number }
 type DetailRow = { id: string; client_number: string; status: string; sub_status: string; createdAt: string; campaignName: string; asesorName: string | null }
 type DetailResp = { rows: DetailRow[]; total: number; page: number; totalPages: number }
 
@@ -46,8 +46,9 @@ export function PanelView() {
       .then(([camps, stats]) => {
         setCampaigns(camps)
         setRows(camps.map((c) => ({
-          ...(stats[c.campaign_id] ?? { campaignId: c.campaign_id, sinGestion: 0, noContacto: 0, agendado: 0, positivo: 0, positivoSinVenta: 0, negativo: 0, nuevos5min: 0, total: 0 }),
+          ...(stats[c.campaign_id] ?? { campaignId: c.campaign_id, sinGestion: 0, noContacto: 0, agendado: 0, positivo: 0, positivoSinVenta: 0, negativo: 0, nuevos5min: 0, hoy: 0, total: 0 }),
           name: c.name,
+          descartados: c.lastSyncSummary?.discarded ?? 0, // filas rechazadas en la última sincronización
         })))
       })
       .catch((e) => setError(e instanceof Error ? e.message : 'Error'))
@@ -62,12 +63,18 @@ export function PanelView() {
   }, [dPage, dOrder, dCampaign, dStatus])
   useEffect(() => { if (view === 'detalle') loadDetail() }, [view, loadDetail])
 
-  const totals = rows.reduce((a, r) => ({ total: a.total + r.total, nuevos: a.nuevos + r.nuevos5min }), { total: 0, nuevos: 0 })
+  const totals = rows.reduce(
+    (a, r) => ({ total: a.total + r.total, nuevos: a.nuevos + r.nuevos5min, hoy: a.hoy + r.hoy, descartados: a.descartados + r.descartados }),
+    { total: 0, nuevos: 0, hoy: 0, descartados: 0 },
+  )
   const promedio = rows.length > 0 ? Math.round(totals.total / rows.length) : 0
+  const hoyConDescartados = totals.hoy + totals.descartados
 
   const num = (n: number) => <span className="font-semibold text-text">{n}</span>
   const summaryCols: Column<Row>[] = [
     { key: 'name', header: 'Campaña', render: (r) => <span className="font-medium text-text">{r.name}</span> },
+    { key: 'hoy', header: 'Hoy', render: (r) => <span className={r.hoy > 0 ? 'font-bold text-blue-600' : 'text-text-muted'}>{r.hoy}</span> },
+    { key: 'desc', header: 'Descartados', render: (r) => <span className="text-text-muted">{r.descartados}</span> },
     { key: 'nv', header: 'Nuevos 5m', render: (r) => <span className={r.nuevos5min > 0 ? 'font-bold text-emerald-600' : 'text-text-muted'}>{r.nuevos5min}</span> },
     { key: 'sg', header: 'Sin gestión', render: (r) => num(r.sinGestion) },
     { key: 'nc', header: 'No contacto', render: (r) => num(r.noContacto) },
@@ -103,9 +110,11 @@ export function PanelView() {
 
       {view === 'resumen' ? (
         <>
-          <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+            <KPI v={hoyConDescartados} l="Leads de hoy (con descartados)" />
+            <KPI v={totals.hoy} l="Leads de hoy" />
+            <KPI v={totals.descartados} l="Descartados (últ. sync)" />
             <KPI v={totals.total} l="Total de leads" />
-            <KPI v={promedio} l="Promedio por campaña" />
             <KPI v={totals.nuevos} l="Nuevos (últimos 5 min)" />
             <KPI v={rows.length} l="Campañas" />
           </div>

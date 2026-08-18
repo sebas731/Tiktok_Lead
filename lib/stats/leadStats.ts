@@ -12,10 +12,20 @@ export type CampaignBreakdown = {
   positivoSinVenta: number
   negativo: number
   nuevos5min: number // leads creados en los últimos 5 minutos
+  hoy: number // leads creados HOY (horario de Lima)
   total: number
 }
 
 const FINAL = [LEAD_STATUS.POSITIVO, LEAD_STATUS.NEGATIVO]
+
+// Perú no tiene horario de verano: zona fija UTC-5.
+const LIMA_OFFSET_MS = 5 * 60 * 60 * 1000
+
+/** Instante UTC de la medianoche de HOY en Lima. */
+function limaTodayStartUtc(): Date {
+  const t = new Date(Date.now() - LIMA_OFFSET_MS) // desplazado a "reloj Lima"
+  return new Date(Date.UTC(t.getUTCFullYear(), t.getUTCMonth(), t.getUTCDate()) + LIMA_OFFSET_MS)
+}
 
 /**
  * Cuenta, por campaña y estado, los leads visibles para el usuario. Usa pocos
@@ -25,7 +35,8 @@ const FINAL = [LEAD_STATUS.POSITIVO, LEAD_STATUS.NEGATIVO]
 export async function campaignBreakdown(user: AuthUser): Promise<Record<string, CampaignBreakdown>> {
   const base = getLeadFilter(user)
   const hace5min = new Date(Date.now() - 5 * 60 * 1000)
-  const [byStatus, posSinVenta, nuevos] = await Promise.all([
+  const inicioHoy = limaTodayStartUtc()
+  const [byStatus, posSinVenta, nuevos, hoy] = await Promise.all([
     prisma.lead.groupBy({ by: ['campaignId', 'status'], where: base, _count: true }),
     prisma.lead.groupBy({
       by: ['campaignId'],
@@ -37,13 +48,18 @@ export async function campaignBreakdown(user: AuthUser): Promise<Record<string, 
       where: { AND: [base, { createdAt: { gte: hace5min } }] },
       _count: true,
     }),
+    prisma.lead.groupBy({
+      by: ['campaignId'],
+      where: { AND: [base, { createdAt: { gte: inicioHoy } }] },
+      _count: true,
+    }),
   ])
 
   const map: Record<string, CampaignBreakdown> = {}
   const row = (id: string) =>
     (map[id] ??= {
       campaignId: id, sinGestion: 0, noContacto: 0, agendado: 0,
-      positivo: 0, positivoSinVenta: 0, negativo: 0, nuevos5min: 0, total: 0,
+      positivo: 0, positivoSinVenta: 0, negativo: 0, nuevos5min: 0, hoy: 0, total: 0,
     })
 
   for (const r of byStatus) {
@@ -57,6 +73,7 @@ export async function campaignBreakdown(user: AuthUser): Promise<Record<string, 
   }
   for (const r of posSinVenta) row(r.campaignId).positivoSinVenta = r._count
   for (const r of nuevos) row(r.campaignId).nuevos5min = r._count
+  for (const r of hoy) row(r.campaignId).hoy = r._count
 
   return map
 }

@@ -7,6 +7,7 @@ export type Breakdown = {
   positivoSinVenta: number
   negativo: number
   nuevos5min: number
+  hoy: number
   total: number
 }
 
