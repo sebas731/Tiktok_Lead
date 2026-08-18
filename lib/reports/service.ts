@@ -31,14 +31,20 @@ function buildProcessedWhere(user: AuthUser, f: ProcessedFilters): Prisma.LeadPr
   if (f.status) where.status = f.status as Prisma.LeadProcessLogWhereInput['status']
   if (f.desde || f.hasta) {
     where.processedAt = {}
-    if (f.desde) where.processedAt.gte = new Date(f.desde)
+    // Las fechas del filtro son CALENDARIO de Lima (UTC-5). Se convierten a UTC
+    // para no arrastrar leads del día anterior/siguiente por la zona horaria.
+    if (f.desde) where.processedAt.gte = limaDayStart(f.desde)
     if (f.hasta) {
-      const d = new Date(f.hasta)
-      d.setHours(23, 59, 59, 999)
-      where.processedAt.lte = d
+      // Fin exclusivo = inicio del día SIGUIENTE en Lima (incluye todo el día "hasta").
+      where.processedAt.lt = new Date(limaDayStart(f.hasta).getTime() + 24 * 60 * 60 * 1000)
     }
   }
   return where
+}
+
+/** Medianoche (00:00) en Lima (UTC-5) de una fecha 'YYYY-MM-DD', como instante UTC. */
+function limaDayStart(dateStr: string): Date {
+  return new Date(`${dateStr.slice(0, 10)}T05:00:00.000Z`)
 }
 
 /**
