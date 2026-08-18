@@ -493,3 +493,24 @@ export async function reclaimLeadByNumber(user: AuthUser, rawNumber: unknown) {
   })
   return prisma.lead.findUnique({ where: { id: match.id }, include: leadInclude })
 }
+
+/**
+ * Elimina los leads SIN_GESTION de una campaña (solo ADMIN). Borra primero los
+ * hijos (logs y asignaciones) para no violar llaves foráneas. Irreversible.
+ */
+export async function deleteSinGestionLeads(user: AuthUser, campaignIdRaw: unknown) {
+  if (user.role !== 'ADMIN') throw new HttpError(403, 'Solo un administrador puede eliminar leads')
+  const campaignId = requireString(campaignIdRaw, 'campaignId')
+  const leads = await prisma.lead.findMany({
+    where: { campaignId, status: LEAD_STATUS.SIN_GESTION },
+    select: { id: true },
+  })
+  const ids = leads.map((l) => l.id)
+  if (ids.length === 0) return { deleted: 0 }
+  await prisma.$transaction([
+    prisma.leadProcessLog.deleteMany({ where: { leadId: { in: ids } } }),
+    prisma.leadAssignment.deleteMany({ where: { leadId: { in: ids } } }),
+    prisma.lead.deleteMany({ where: { id: { in: ids } } }),
+  ])
+  return { deleted: ids.length }
+}

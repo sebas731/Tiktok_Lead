@@ -21,6 +21,7 @@ const NAV_BY_ROLE: Record<Role, NavItem[]> = {
     { href: '/dashboard/sedes', label: 'Sedes', icon: 'sedes' },
     { href: '/dashboard/grupos', label: 'Grupos', icon: 'grupos' },
     { href: '/dashboard/keys', label: 'Keys', icon: 'keys' },
+    { href: '/dashboard/limpieza', label: 'Limpieza de leads', icon: 'limpieza' },
     { href: '/dashboard/settings', label: 'Configuración', icon: 'settings' },
   ],
   SUPERVISOR: [
