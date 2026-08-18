@@ -276,7 +276,16 @@ export async function selfAssignLead(user: AuthUser, campaignId: string) {
   if (pending > 0) {
     throw new HttpError(409, 'Ya tienes un lead sin gestionar. Termínalo antes de tomar otro.')
   }
+    if (pending > 0) {
+    throw new HttpError(409, 'Ya tienes un lead sin gestionar. Termínalo antes de tomar otro.')
+  }
 
+  const noContacto = await prisma.lead.count({
+    where: { campaignId, asignadoAId: user.userId, status: LEAD_STATUS.NO_CONTACTO },
+  })
+  if (noContacto >= 5) {
+    throw new HttpError(409, 'Ya tienes 5 leads en NO CONTACTO. Gestiónalos antes libera 1 antes de tomar otro.')
+  }
   for (let attempt = 0; attempt < 3; attempt++) {
     const now = new Date()
     const pool = availableLeadWhere(campaignId, now, campaign.allowNoContactoPull)
@@ -435,10 +444,9 @@ export async function assignLeads(user: AuthUser, input: AssignLeadsInput) {
 }
 
 /**
- * Recupera leads ASIGNADOS que siguen SIN_GESTION: los desasigna y los devuelve
- * al pool (sin asesor y sin reserva), para que otros puedan tomarlos. Solo actúa
- * sobre leads de la campaña que estén asignados y sin gestionar (los ya
- * gestionados no se tocan). ADMIN, o SUPERVISOR con la campaña asignada.
+ * Recupera leads ASIGNADOS que siguen SIN_GESTION o NO_CONTACTO: los desasigna y
+ * los devuelve al pool (sin asesor y sin reserva), para que otros puedan tomarlos.
+ * Los finales (POSITIVO/NEGATIVO) no se tocan. ADMIN, o SUPERVISOR con la campaña.
  */
 export async function recoverLeads(user: AuthUser, input: { campaignId?: unknown; leadIds?: unknown }) {
   const campaignId = requireString(input.campaignId, 'campaignId')
@@ -453,7 +461,7 @@ export async function recoverLeads(user: AuthUser, input: { campaignId?: unknown
     where: {
       id: { in: leadIds },
       campaignId,
-      status: LEAD_STATUS.SIN_GESTION,
+      status: { in: [LEAD_STATUS.SIN_GESTION, LEAD_STATUS.NO_CONTACTO] },
       asignadoAId: { not: null },
     },
     data: { asignadoAId: null, reservedUntil: null },

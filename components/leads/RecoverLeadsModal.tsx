@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
+import { Badge, leadStatusTone } from '@/components/ui/Badge'
+import { STATUS_LABELS } from '@/lib/constants/leads'
 import { apiGet, apiSend } from '@/lib/api/client'
 import { userLabel, type Lead } from '@/lib/types'
 
@@ -31,9 +33,9 @@ export function RecoverLeadsModal({ open, onClose, onRecovered, campaignId }: Pr
   const load = useCallback(() => {
     setLoading(true)
     setError('')
-    // Leads asignados que siguen SIN_GESTION en la campaña.
-    apiGet<Lead[]>(`/api/leads?campaignId=${campaignId}&status=SIN_GESTION`)
-      .then((all) => setLeads(all.filter((l) => l.asignadoAId)))
+    // Leads asignados que siguen SIN_GESTION o NO_CONTACTO en la campaña.
+    apiGet<Lead[]>(`/api/leads?campaignId=${campaignId}&excludeFinal=1`)
+      .then((all) => setLeads(all.filter((l) => l.asignadoAId && (l.status === 'SIN_GESTION' || l.status === 'NO_CONTACTO'))))
       .catch((e) => setError(e instanceof Error ? e.message : 'Error'))
       .finally(() => setLoading(false))
   }, [campaignId])
@@ -116,7 +118,7 @@ export function RecoverLeadsModal({ open, onClose, onRecovered, campaignId }: Pr
       open={open}
       onClose={onClose}
       size="xl"
-      title="Recuperar leads asignados sin gestión"
+      title="Recuperar leads (sin gestión / no contacto)"
       actions={
         <>
           <Button variant="secondary" onClick={onClose}>Cancelar</Button>
@@ -156,7 +158,7 @@ export function RecoverLeadsModal({ open, onClose, onRecovered, campaignId }: Pr
             <p className="px-3.5 py-6 text-center text-sm text-text-muted">Cargando…</p>
           ) : grupos.length === 0 ? (
             <p className="px-3.5 py-6 text-center text-sm text-text-muted">
-              {searching ? 'Sin resultados para tu búsqueda.' : 'No hay leads asignados sin gestión.'}
+              {searching ? 'Sin resultados para tu búsqueda.' : 'No hay leads asignados (sin gestión / no contacto).'}
             </p>
           ) : (
             grupos.map((g) => {
@@ -208,6 +210,7 @@ export function RecoverLeadsModal({ open, onClose, onRecovered, campaignId }: Pr
                           onChange={() => toggleLead(l.id)}
                         />
                         <span className="font-mono text-text">{l.client_number}</span>
+                        <Badge tone={leadStatusTone(l.status)}>{STATUS_LABELS[l.status] ?? l.status}</Badge>
                         {l.name_client && <span className="text-text-muted">· {l.name_client}</span>}
                       </label>
                     ))}
