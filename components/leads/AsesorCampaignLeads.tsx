@@ -14,6 +14,7 @@ import type { Campaign, Lead, Me } from '@/lib/types'
 import { LeadDetailModal } from './LeadDetailModal'
 import { WhatsAppButton } from './WhatsAppButton'
 import { RecoverHelpModal } from './RecoverHelpModal'
+import { CorregirLeadModal } from './CorregirLeadModal'
 
 // En el historial solo se pueden recuperar/corregir los N leads más recientes.
 const RECOVERABLE = 5
@@ -30,6 +31,7 @@ export function AsesorCampaignLeads({ campaignId }: { campaignId: string }) {
   const [notice, setNotice] = useState('')
   const [assigning, setAssigning] = useState(false)
   const [helpOpen, setHelpOpen] = useState(false)
+  const [corregirOpen, setCorregirOpen] = useState(false)
   const [soltando, setSoltando] = useState('')
   const [highlightId, setHighlightId] = useState('')
   const [error, setError] = useState('')
@@ -226,7 +228,7 @@ export function AsesorCampaignLeads({ campaignId }: { campaignId: string }) {
       {isAuto && pendingCount > 0 && (
         <p className="mb-3 text-sm text-text-muted">Termina tu lead pendiente antes de tomar otro.</p>
       )}
-      <div className="mb-4">
+      <div className="mb-4 flex items-center justify-between gap-3">
         <Tabs
           tabs={[
             { id: 'pendientes', label: 'Por atender' },
@@ -235,6 +237,7 @@ export function AsesorCampaignLeads({ campaignId }: { campaignId: string }) {
           active={tab}
           onChange={setTab}
         />
+        <Button variant="secondary" onClick={() => setCorregirOpen(true)}>Corregir lead</Button>
       </div>
       {tab === 'historial' && (
         <div className="mb-3 flex items-center gap-2 text-sm text-text-muted">
@@ -272,6 +275,12 @@ export function AsesorCampaignLeads({ campaignId }: { campaignId: string }) {
         />
       )}
       {helpOpen && <RecoverHelpModal onClose={() => setHelpOpen(false)} />}
+      {corregirOpen && (
+        <CorregirLeadModal
+          onClose={() => setCorregirOpen(false)}
+          onReclaimed={(lead) => { setCorregirOpen(false); setDetail(lead) }}
+        />
+      )}
     </div>
   )
 }

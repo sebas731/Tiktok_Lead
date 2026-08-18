@@ -1,8 +1,6 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
-import jsPDF from 'jspdf'
-import autoTable from 'jspdf-autotable'
 import { Table, type Column } from '@/components/ui/Table'
 import { Button } from '@/components/ui/Button'
 import { Select } from '@/components/ui/Select'
@@ -76,44 +74,37 @@ export function ProcessedLeadsView() {
   }, [query, view])
   useEffect(load, [load])
 
-  async function exportPdf() {
+  async function exportExcel() {
     setExporting(true)
     setError('')
     try {
       const data = await apiGet<ProcessedDetailRow[]>(`/api/reports/processed/detail?${query()}`)
-      const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' })
-      const GUINDA: [number, number, number] = [166, 28, 40] // color de la empresa
-      doc.setFontSize(16)
-      doc.setTextColor(...GUINDA)
-      doc.text('Leads procesados', 14, 14)
-      doc.setFontSize(10)
-      doc.setTextColor(90)
-      const rango = `Rango: ${desde || 'inicio'}  a  ${hasta || 'hoy'}`
-      doc.text(`${rango}   ·   ${data.length} gestiones   ·   Generado ${new Date().toLocaleString()}`, 14, 20)
-
-      autoTable(doc, {
-        startY: 24,
-        head: [['Fecha', 'Supervisor', 'Asesor', 'DNI', 'ID Lead', 'Código', 'Número', 'Campaña', 'Estado', 'Sub-estado', 'Motivo', 'Observaciones']],
-        body: data.map((r) => [
+      const headers = ['Fecha', 'Supervisor', 'Asesor', 'DNI', 'ID Lead', 'Código', 'Número', 'Campaña', 'Estado', 'Sub-estado', 'Motivo', 'Observaciones']
+      // Escapa caracteres HTML para que la tabla no se rompa.
+      const esc = (v: unknown) => String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      // mso-number-format:\@ fuerza a Excel a tratar todo como TEXTO (no rompe teléfonos/DNI).
+      const cell = (v: unknown) => `<td style="mso-number-format:'\\@'">${esc(v)}</td>`
+      const body = data
+        .map((r) => `<tr>${[
           new Date(r.processedAt).toLocaleString(),
-          r.supervisorName,
-          r.asesorName,
-          r.asesorDni,
-          r.leadId.slice(0, 8),
-          r.saleCode ?? '—',
-          r.leadNumber,
-          r.campaignName,
-          STATUS_LABELS[r.status] ?? r.status,
-          SUBSTATUS_LABELS[r.subStatus] ?? r.subStatus,
-          r.reason || '—',
-          r.observations ?? '—',
-        ]),
-        styles: { fontSize: 7, cellPadding: 1.5, overflow: 'linebreak' },
-        headStyles: { fillColor: GUINDA, textColor: 255, fontStyle: 'bold' },
-        alternateRowStyles: { fillColor: [250, 235, 237] }, // guinda muy claro
-        margin: { left: 10, right: 10 },
-      })
-      doc.save(`leads-procesados-${new Date().toISOString().slice(0, 10)}.pdf`)
+          r.supervisorName, r.asesorName, r.asesorDni, r.leadId.slice(0, 8),
+          r.saleCode ?? '', r.leadNumber, r.campaignName,
+          STATUS_LABELS[r.status] ?? r.status, SUBSTATUS_LABELS[r.subStatus] ?? r.subStatus,
+          r.reason || '', r.observations ?? '',
+        ].map(cell).join('')}</tr>`)
+        .join('')
+      const html =
+        `<html xmlns:x="urn:schemas-microsoft-com:office:excel"><head><meta charset="utf-8"></head><body>` +
+        `<table border="1"><thead><tr>${headers.map((h) => `<th>${h}</th>`).join('')}</tr></thead><tbody>${body}</tbody></table>` +
+        `</body></html>`
+      // El BOM (\ufeff) asegura que Excel lea bien las tildes.
+      const blob = new Blob(['\ufeff' + html], { type: 'application/vnd.ms-excel' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `leads-procesados-${new Date().toISOString().slice(0, 10)}.xls`
+      a.click()
+      URL.revokeObjectURL(url)
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Error al exportar')
     } finally {
@@ -171,7 +162,7 @@ export function ProcessedLeadsView() {
       <PageHeader
         title="Leads procesados por asesor"
         description="Gestiones registradas por cada asesor."
-        actions={<Button onClick={exportPdf} loading={exporting}>Exportar PDF</Button>}
+        actions={<Button onClick={exportExcel} loading={exporting}>Exportar Excel</Button>}
       />
 
       <div className="mb-4 inline-flex rounded-xl border border-border bg-surface p-1">

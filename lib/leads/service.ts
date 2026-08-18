@@ -460,3 +460,36 @@ export async function recoverLeads(user: AuthUser, input: { campaignId?: unknown
   })
   return { recovered: res.count }
 }
+
+/**
+ * Corregir lead (asesor): trae por NÚMERO cualquier lead que este asesor haya
+ * gestionado alguna vez (sin el límite de 5), y se lo reasigna —quitándoselo a
+ * quien lo tenga— para poder corregirlo (p. ej. un NO_CONTACTO que sí compró).
+ * Si otro lo tenía abierto, su guardado fallará silenciosamente (no se avisa).
+ */
+export async function reclaimLeadByNumber(user: AuthUser, rawNumber: unknown) {
+  if (user.role !== 'ASESOR') throw new HttpError(403, 'Solo los asesores pueden corregir sus leads')
+  const digits = requireString(rawNumber, 'number').replace(/\D/g, '')
+  if (digits.length < 6) throw new HttpError(400, 'Número inválido')
+  const last9 = digits.slice(-9)
+
+  // Solo entre los leads que ÉL ya gestionó antes (tiene rastro suyo). Se comparan
+  // por DÍGITOS en JS porque los números guardados traen espacios/prefijo (+51 ...).
+  const candidatos = await prisma.lead.findMany({
+    where: { processLogs: { some: { userId: user.userId } } },
+    orderBy: { updatedAt: 'desc' },
+    select: { id: true, client_number: true, status: true },
+  })
+  const match = candidatos.find((c) => c.client_number.replace(/\D/g, '').endsWith(last9))
+  if (!match) throw new HttpError(404, 'No se encontró un lead tuyo con ese número.')
+
+  // Se lo reasigna (se lo quita a quien lo tenga). AGENDADO conserva su reserva.
+  await prisma.lead.update({
+    where: { id: match.id },
+    data: {
+      asignadoAId: user.userId,
+      reservedUntil: match.status === LEAD_STATUS.AGENDADO ? new Date(Date.now() + 24 * HOUR) : null,
+    },
+  })
+  return prisma.lead.findUnique({ where: { id: match.id }, include: leadInclude })
+}
