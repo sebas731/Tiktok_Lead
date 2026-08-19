@@ -10,6 +10,7 @@ import { apiGet, apiSend } from '@/lib/api/client'
 import type { Campaign, Role } from '@/lib/types'
 import { CampaignFormModal } from './CampaignFormModal'
 import { CampaignStats, type Breakdown } from './CampaignStats'
+import { ThorReenvioModal } from './ThorReenvioModal'
 
 export function CampaignsView({ role }: { role: Role }) {
   const router = useRouter()
@@ -22,6 +23,7 @@ export function CampaignsView({ role }: { role: Role }) {
   const [notice, setNotice] = useState('')
   const [syncing, setSyncing] = useState('')
   const [form, setForm] = useState<{ open: boolean; campaign?: Campaign | null }>({ open: false })
+  const [thor, setThor] = useState<Campaign | null>(null)
 
   function load() {
     apiGet<Campaign[]>('/api/campaigns')
@@ -116,6 +118,7 @@ export function CampaignsView({ role }: { role: Role }) {
                   )}
                   <Button variant="ghost" onClick={() => toggleStatus(c)}>{c.status ? 'Desactivar' : 'Activar'}</Button>
                   <Button variant="ghost" onClick={() => remove(c)}>Eliminar</Button>
+                  <Button variant="ghost" onClick={() => setThor(c)}>Reenvío</Button>
                 </div>
               )}
               {isSupervisor && (
@@ -140,6 +143,15 @@ export function CampaignsView({ role }: { role: Role }) {
           open
           campaign={form.campaign}
           onClose={() => setForm({ open: false })}
+          onSaved={load}
+        />
+      )}
+
+      {thor && (
+        <ThorReenvioModal
+          key={thor.campaign_id}
+          campaign={thor}
+          onClose={() => setThor(null)}
           onSaved={load}
         />
       )}

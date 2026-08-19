@@ -3,7 +3,7 @@ import { Prisma } from '@/lib/generated/prisma/client'
 import { HttpError } from '@/lib/api/response'
 import { readSheetRows, findTabByGid, serviceAccountConfigured } from '@/lib/services/googleSheets'
 import type { CampaignSyncSummary } from '@/lib/types'
-import { WebhookLeads } from '@/lib/webhooks/service'
+import { sendLeadToThor } from '@/lib/webhooks/service'
 
 const digits = (s: string) => (s.match(/\d/g) || []).length
 
@@ -89,12 +89,8 @@ export async function syncAllAutoCampaigns() {
   return { total: campaigns.length, ok: results.filter((r) => r.ok).length, results }
 }
 
-/**
- * Sincroniza los leads de una campaña Excel. Una pestaña = una campaña: se lee
- * la pestaña completa (identificada por gid). Idempotente: nunca sobreescribe la
- * gestión de los asesores (upsert con update vacío).
- */
-export async function syncExcelCampaign(campaignId: string): Promise<CampaignSyncSummary> {
+
+export async function syncExcelCampaign(campaignId: string ): Promise<CampaignSyncSummary> {
   const campaign = await prisma.campaign.findUnique({ where: { campaign_id: campaignId } })
   if (!campaign) throw new HttpError(404, 'Campaña no encontrada')
   if (campaign.source !== 'EXCEL' || !campaign.excelUrl) {
@@ -157,6 +153,7 @@ export async function syncExcelCampaign(campaignId: string): Promise<CampaignSyn
         row: r + 1, // fila real en la hoja (1 = encabezado)
       })
     }
+   
 
     // 4. Pre-check barato: qué client_number ya existen (UNA sola consulta).
     //    En el caso común (nada nuevo) esto termina en un SELECT y cero escrituras.
@@ -171,45 +168,47 @@ export async function syncExcelCampaign(campaignId: string): Promise<CampaignSyn
     const nuevos = candidates.filter((c) => !existingSet.has(c.client_number))
     const existing = candidates.length - nuevos.length
 
-    // 5. Insertar SOLO los nuevos, por lotes, SIN transacción interactiva. Si un
-    //    lote falla, se reintenta fila por fila para aislar el/los problema(s).
-    let created = 0
-    const errors: { row: number; reason: string }[] = []
-    for (let i = 0; i < nuevos.length; i += CHUNK) {
-      const chunk = nuevos.slice(i, i + CHUNK)
-      try {
-        const res = await prisma.lead.createMany({
-          data: chunk.map((c) => ({ client_number: c.client_number, name_client: c.name_client, campaignId, reason: '' })),
-          skipDuplicates: true, // idempotente + cubre carreras entre crons
-        })
-        created += res.count
-      } catch {
-        for (const c of chunk) {
-          try {
-            await prisma.lead.create({ data: { client_number: c.client_number, name_client: c.name_client, campaignId, reason: '' } })
-            created++
-          } catch (e) {
-            errors.push({ row: c.row, reason: e instanceof Error ? e.message : 'Error al insertar' })
+
+       // 5. Insertar SOLO los nuevos, por lotes, SIN transacción interactiva. Si un
+        //    lote falla, se reintenta fila por fila para aislar el/los problema(s).
+        //    En modo ESTRICTO NO se crean leads (solo se reenvían a Thor).
+        const crearLeads = campaign.thorMode !== 'ESTRICTO'
+        let created = 0
+        const errors: { row: number; reason: string }[] = []
+        if (crearLeads) {
+          for (let i = 0; i < nuevos.length; i += CHUNK) {
+            const chunk = nuevos.slice(i, i + CHUNK)
+            try {
+              const res = await prisma.lead.createMany({
+                data: chunk.map((c) => ({ client_number: c.client_number, name_client: c.name_client, campaignId, reason: '' })),
+                skipDuplicates: true, // idempotente + cubre carreras entre crons
+              })
+              created += res.count
+            } catch {
+              for (const c of chunk) {
+                try {
+                  await prisma.lead.create({ data: { client_number: c.client_number, name_client: c.name_client, campaignId, reason: '' } })
+                  created++
+                } catch (e) {
+                  errors.push({ row: c.row, reason: e instanceof Error ? e.message : 'Error al insertar' })
+                }
+              }
+            }
           }
         }
-      }
-    }
-    /*
-    //Trigger de POST al thor de Jesus
-    if (nuevos.length > 0) {
-      const creados = await prisma.lead.findMany({
-        where: { campaignId, client_number: { in: nuevos.map((c) => c.client_number) } },
-        select: { id: true },
-      })
-      for (const l of creados) {
-        void WebhookLeads(l.id)   // dispara y no espera
-      }
-    }
-    */
 
-    const summary: CampaignSyncSummary = { totalRows, created, existing, discarded, errors, renamed }
-    await markSyncOk(campaignId, summary, sheetTitle || campaign.excelSheetName || '')
-    return summary
+        // 6. Reenvío al Thor de Jesús (best-effort). ESTRICTO: solo envía; PARALELO:
+        //    crea (arriba) Y envía. Se envían los "nuevos" secuencial para no saturar.
+        if ((campaign.thorMode === 'ESTRICTO' || campaign.thorMode === 'PARALELO') && campaign.thorSlug) {
+          for (const c of nuevos) {
+            await sendLeadToThor(c.client_number, campaignId, campaign.name, campaign.thorSlug)
+          }
+        }
+
+        const summary: CampaignSyncSummary = { totalRows, created, existing, discarded, errors, renamed }
+        await markSyncOk(campaignId, summary, sheetTitle || campaign.excelSheetName || '')
+        return summary
+
   } catch (e) {
     // No fallar en silencio: deja el motivo persistido y visible en la UI.
     if (!(e instanceof HttpError)) {

@@ -72,6 +72,9 @@ export async function updateCampaign(id: string, input: Record<string, unknown>)
   if (typeof input.leadMode === 'string') data.leadMode = requireEnum(input.leadMode, LeadMode, 'leadMode')
   if (typeof input.autoSync === 'boolean') data.autoSync = input.autoSync
   if (typeof input.allowNoContactoPull === 'boolean') data.allowNoContactoPull = input.allowNoContactoPull
+  // Reenvío a Thor: modo (OFF/ESTRICTO/PARALELO) y campaña destino (slug).
+  if (typeof input.thorMode === 'string') data.thorMode = input.thorMode
+  if (typeof input.thorSlug === 'string') data.thorSlug = input.thorSlug || null
 
   if (campaign.source === 'TIKTOK') {
     if (typeof input.tiktokCampaignId === 'string') data.tiktokCampaignId = input.tiktokCampaignId

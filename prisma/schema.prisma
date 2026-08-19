@@ -164,6 +164,12 @@ model Campaign {
   // ignorando el enfriamiento de 5h. Lo habilita admin/supervisor por campaña.
   allowNoContactoPull Boolean @default(false)
 
+  // Reenvío al Thor de Jesús. thorMode: OFF (no envía) | ESTRICTO (NO crea leads,
+  // solo envía a Thor) | PARALELO (crea leads Y envía a Thor). thorSlug = campaña
+  // destino en el Thor (arma la URL .../{thorSlug}/ads). Lo activa un botón.
+  thorMode String  @default("OFF")
+  thorSlug String?
+
   // metricas para el dhasboard
   impressions Int   @default(0)
   clicks      Int   @default(0)
