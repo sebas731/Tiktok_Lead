@@ -194,6 +194,7 @@ export async function syncExcelCampaign(campaignId: string): Promise<CampaignSyn
         }
       }
     }
+    /*
     //Trigger de POST al thor de Jesus
     if (nuevos.length > 0) {
       const creados = await prisma.lead.findMany({
@@ -204,6 +205,7 @@ export async function syncExcelCampaign(campaignId: string): Promise<CampaignSyn
         void WebhookLeads(l.id)   // dispara y no espera
       }
     }
+    */
 
     const summary: CampaignSyncSummary = { totalRows, created, existing, discarded, errors, renamed }
     await markSyncOk(campaignId, summary, sheetTitle || campaign.excelSheetName || '')
