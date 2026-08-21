@@ -173,18 +173,10 @@ export async function syncExcelCampaign(campaignId: string ): Promise<CampaignSy
     const nuevos = candidates.filter((c) => !existingByNum.has(c.client_number))
     const existing = existentes.length
 
-    // 4b. Reingreso: si un lead ya existe pero NO está agendado ni vendido
-    //     (p.ej. NO_CONTACTO o NEGATIVO), vuelve a aparecer como NUEVO
-    //     (SIN_GESTION, sin asesor, sin reserva). Los AGENDADO/POSITIVO se respetan.
-    const reingresar = existentes.filter((l) => l.status === 'NO_CONTACTO' || l.status === 'NEGATIVO')
-    if (reingresar.length > 0) {
-      await prisma.lead.updateMany({
-        where: { id: { in: reingresar.map((l) => l.id) } },
-        // createdAt se refresca a AHORA: así el lead reingresa como nuevo y NO lo
-        // oculta el corte de recencia de 3 días (aunque el original fuera antiguo).
-        data: { status: 'SIN_GESTION', sub_status: 'OTRO', asignadoAId: null, reservedUntil: null, createdAt: new Date() },
-      })
-    }
+    // NOTA: el sync NO modifica leads que ya existen (idempotente). Antes se
+    // "reingresaban" los NO_CONTACTO/NEGATIVO a SIN_GESTION, pero como el cron lee
+    // toda la hoja cada 3 min, eso reseteaba el trabajo del asesor en cada corrida.
+    // Los existentes se respetan; solo se insertan los nuevos.
 
 
        // 5. Insertar SOLO los nuevos, por lotes, SIN transacción interactiva. Si un
@@ -233,22 +225,14 @@ export async function syncExcelCampaign(campaignId: string ): Promise<CampaignSy
           const url = campaign.excelUrl
           const gid = campaign.excelGid
           const title = sheetTitle || campaign.excelSheetName || ''
-          const reflejos = [
-            ...existentes
-              .filter((l) => l.status === 'AGENDADO' || l.status === 'POSITIVO')
-              .map((l) => ({
-                clientNumber: l.client_number,
-                asesor: l.asignadoA ? fullName(l.asignadoA) : '',
-                estado: STATUS_LABELS[l.status] ?? l.status,
-                subEstado: SUBSTATUS_LABELS[l.sub_status] ?? l.sub_status,
-              })),
-            ...reingresar.map((l) => ({
+          const reflejos = existentes
+            .filter((l) => l.status === 'AGENDADO' || l.status === 'POSITIVO')
+            .map((l) => ({
               clientNumber: l.client_number,
-              asesor: '',
-              estado: STATUS_LABELS.SIN_GESTION,
-              subEstado: '',
-            })),
-          ]
+              asesor: l.asignadoA ? fullName(l.asignadoA) : '',
+              estado: STATUS_LABELS[l.status] ?? l.status,
+              subEstado: SUBSTATUS_LABELS[l.sub_status] ?? l.sub_status,
+            }))
           void (async () => {
             for (const e of reflejos) {
               try {
