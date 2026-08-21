@@ -371,6 +371,23 @@ function cleanNumbers(input: unknown): string[] {
   return [...set]
 }
 
+/** Forma canónica de un teléfono para comparar: últimos 9 dígitos (ignora +51, espacios, guiones). */
+function normPhone(s: string): string {
+  const d = s.replace(/\D/g, '')
+  return d.length >= 9 ? d.slice(-9) : d
+}
+
+/**
+ * Resuelve los IDs de los leads de una campaña a partir de una lista de números
+ * pegados, comparando por número normalizado (tolera +51, espacios y guiones).
+ */
+async function resolveLeadIdsByNumbers(campaignId: string, numbers: string[]): Promise<string[]> {
+  const wanted = new Set(numbers.map(normPhone).filter(Boolean))
+  if (wanted.size === 0) return []
+  const leads = await prisma.lead.findMany({ where: { campaignId }, select: { id: true, client_number: true } })
+  return leads.filter((l) => wanted.has(normPhone(l.client_number))).map((l) => l.id)
+}
+
 /** Resuelve el asesor por id o por DNI (document_number). */
 async function resolveAsesorId(input: AssignLeadsInput): Promise<string> {
   if (typeof input.asesorId === 'string' && input.asesorId) return input.asesorId
@@ -447,14 +464,9 @@ export async function assignLeads(user: AuthUser, input: AssignLeadsInput) {
       throw new HttpError(400, 'No hay leads disponibles (revisa reservas de agendados y enfriamientos de no-contacto)')
     }
   } else if (Array.isArray(input.numbers) && input.numbers.length > 0) {
-    // Asignar por lista de números pegada.
-    const nums = cleanNumbers(input.numbers)
-    const leads = await prisma.lead.findMany({
-      where: { campaignId, client_number: { in: nums } },
-      select: { id: true },
-    })
-    if (leads.length === 0) throw new HttpError(400, 'Ninguno de esos números pertenece a esta campaña')
-    leadIds = leads.map((l) => l.id)
+    // Asignar por lista de números pegada (match tolerante a +51/espacios/guiones).
+    leadIds = await resolveLeadIdsByNumbers(campaignId, cleanNumbers(input.numbers))
+    if (leadIds.length === 0) throw new HttpError(400, 'Ninguno de esos números pertenece a esta campaña')
   } else {
     throw new HttpError(400, 'Debes enviar leadIds, cantidad o numbers')
   }
@@ -485,9 +497,10 @@ export async function reingresarLeadsByNumbers(user: AuthUser, input: { campaign
   await assertCanAssignInCampaign(user, campaignId)
   const nums = cleanNumbers(input.numbers)
   if (nums.length === 0) throw new HttpError(400, 'Pega al menos un número')
+  const ids = await resolveLeadIdsByNumbers(campaignId, nums)
 
   const res = await prisma.lead.updateMany({
-    where: { campaignId, client_number: { in: nums }, status: { not: LEAD_STATUS.POSITIVO } },
+    where: { id: { in: ids }, status: { not: LEAD_STATUS.POSITIVO } },
     data: {
       status: LEAD_STATUS.SIN_GESTION,
       sub_status: LEAD_SUBSTATUS.OTRO,

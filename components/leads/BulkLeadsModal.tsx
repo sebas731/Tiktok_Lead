@@ -10,9 +10,16 @@ import { userLabel, type Me } from '@/lib/types'
 
 type Props = { campaignId: string; onClose: () => void; onDone: () => void }
 
-/** Extrae secuencias de dígitos (6+) del texto pegado. */
+/**
+ * Un número por línea (o separados por coma/;). Se limpian +51, espacios y
+ * guiones dentro de cada número. Se queda con los que tengan 6+ dígitos.
+ */
 function parseNumbers(text: string): string[] {
-  return [...new Set(text.match(/\d{6,}/g) ?? [])]
+  const tokens = text
+    .split(/[\n,;]+/)
+    .map((t) => t.replace(/\D/g, ''))
+    .filter((t) => t.length >= 6)
+  return [...new Set(tokens)]
 }
 
 export function BulkLeadsModal({ campaignId, onClose, onDone }: Props) {
