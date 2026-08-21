@@ -357,6 +357,18 @@ export type AssignLeadsInput = {
   asesorDni?: unknown
   leadIds?: unknown
   cantidad?: unknown
+  numbers?: unknown // lista de client_number (pegar varios a la vez)
+}
+
+/** Normaliza una lista de números pegados (limpia vacíos y duplicados). */
+function cleanNumbers(input: unknown): string[] {
+  if (!Array.isArray(input)) return []
+  const set = new Set<string>()
+  for (const v of input) {
+    const s = String(v).trim()
+    if (s) set.add(s)
+  }
+  return [...set]
 }
 
 /** Resuelve el asesor por id o por DNI (document_number). */
@@ -434,8 +446,17 @@ export async function assignLeads(user: AuthUser, input: AssignLeadsInput) {
     if (leadIds.length === 0) {
       throw new HttpError(400, 'No hay leads disponibles (revisa reservas de agendados y enfriamientos de no-contacto)')
     }
+  } else if (Array.isArray(input.numbers) && input.numbers.length > 0) {
+    // Asignar por lista de números pegada.
+    const nums = cleanNumbers(input.numbers)
+    const leads = await prisma.lead.findMany({
+      where: { campaignId, client_number: { in: nums } },
+      select: { id: true },
+    })
+    if (leads.length === 0) throw new HttpError(400, 'Ninguno de esos números pertenece a esta campaña')
+    leadIds = leads.map((l) => l.id)
   } else {
-    throw new HttpError(400, 'Debes enviar leadIds (array) o cantidad (número > 0)')
+    throw new HttpError(400, 'Debes enviar leadIds, cantidad o numbers')
   }
 
   await prisma.$transaction([
@@ -451,6 +472,31 @@ export async function assignLeads(user: AuthUser, input: AssignLeadsInput) {
     }),
   ])
   return { assigned: leadIds.length, asesorId }
+}
+
+/**
+ * Reingreso manual por lista de números: los leads indicados vuelven a SIN_GESTION
+ * (sin asesor, sin reserva y con fecha refrescada → cuentan como nuevos). NO toca
+ * los vendidos (POSITIVO). Es la forma controlada de reprocesar, sin que el cron
+ * lo haga solo. ADMIN, o SUPERVISOR con la campaña asignada.
+ */
+export async function reingresarLeadsByNumbers(user: AuthUser, input: { campaignId?: unknown; numbers?: unknown }) {
+  const campaignId = requireString(input.campaignId, 'campaignId')
+  await assertCanAssignInCampaign(user, campaignId)
+  const nums = cleanNumbers(input.numbers)
+  if (nums.length === 0) throw new HttpError(400, 'Pega al menos un número')
+
+  const res = await prisma.lead.updateMany({
+    where: { campaignId, client_number: { in: nums }, status: { not: LEAD_STATUS.POSITIVO } },
+    data: {
+      status: LEAD_STATUS.SIN_GESTION,
+      sub_status: LEAD_SUBSTATUS.OTRO,
+      asignadoAId: null,
+      reservedUntil: null,
+      createdAt: new Date(), // reingresa como nuevo (pasa el corte de recencia)
+    },
+  })
+  return { reingresados: res.count, pedidos: nums.length }
 }
 
 /**

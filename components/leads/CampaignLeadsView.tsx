@@ -13,6 +13,7 @@ import { apiGet, apiSend } from '@/lib/api/client'
 import { STATUS_LABELS, STATUS_OPTIONS } from '@/lib/constants/leads'
 import { userLabel, type Lead, type Me, type Role } from '@/lib/types'
 import { AssignLeadsModal } from './AssignLeadsModal'
+import { BulkLeadsModal } from './BulkLeadsModal'
 import { RecoverLeadsModal } from './RecoverLeadsModal'
 import { LeadDetailModal } from './LeadDetailModal'
 
@@ -26,6 +27,7 @@ export function CampaignLeadsView({ campaignId, role }: { campaignId: string; ro
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [assign, setAssign] = useState<{ open: boolean; ids: string[] }>({ open: false, ids: [] })
   const [recoverOpen, setRecoverOpen] = useState(false)
+  const [bulkOpen, setBulkOpen] = useState(false)
   const [detail, setDetail] = useState<Lead | null>(null)
   const [soltando, setSoltando] = useState('')
   const [error, setError] = useState('')
@@ -172,6 +174,7 @@ export function CampaignLeadsView({ campaignId, role }: { campaignId: string; ro
                   Asignar selección ({selected.size})
                 </Button>
                 <Button onClick={() => setAssign({ open: true, ids: [] })}>Asignar por cantidad</Button>
+                <Button variant="secondary" onClick={() => setBulkOpen(true)}>Por lista (pegar números)</Button>
                 <Button variant="secondary" onClick={() => setRecoverOpen(true)}>Recuperar leads</Button>
               </div>
             ) : undefined
@@ -225,6 +228,9 @@ export function CampaignLeadsView({ campaignId, role }: { campaignId: string; ro
           onRecovered={load}
           campaignId={campaignId}
         />
+      )}
+      {bulkOpen && (
+        <BulkLeadsModal campaignId={campaignId} onClose={() => setBulkOpen(false)} onDone={load} />
       )}
       {detail && (
         <LeadDetailModal
