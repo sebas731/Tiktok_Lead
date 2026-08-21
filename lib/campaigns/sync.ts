@@ -1,8 +1,9 @@
 import { prisma } from '@/lib/prisma'
 import { Prisma } from '@/lib/generated/prisma/client'
 import { HttpError } from '@/lib/api/response'
-import { readSheetRows, findTabByGid, serviceAccountConfigured } from '@/lib/services/googleSheets'
-import type { CampaignSyncSummary } from '@/lib/types'
+import { readSheetRows, findTabByGid, serviceAccountConfigured, writeLeadStatusToSheet } from '@/lib/services/googleSheets'
+import { fullName, type CampaignSyncSummary } from '@/lib/types'
+import { STATUS_LABELS, SUBSTATUS_LABELS } from '@/lib/constants/leads'
 import { sendLeadToThor } from '@/lib/webhooks/service'
 
 const digits = (s: string) => (s.match(/\d/g) || []).length
@@ -155,18 +156,35 @@ export async function syncExcelCampaign(campaignId: string ): Promise<CampaignSy
     }
    
 
-    // 4. Pre-check barato: qué client_number ya existen (UNA sola consulta).
-    //    En el caso común (nada nuevo) esto termina en un SELECT y cero escrituras.
-    const existingSet = new Set(
-      (
-        await prisma.lead.findMany({
-          where: { campaignId, client_number: { in: candidates.map((c) => c.client_number) } },
-          select: { client_number: true },
-        })
-      ).map((l) => l.client_number),
-    )
-    const nuevos = candidates.filter((c) => !existingSet.has(c.client_number))
-    const existing = candidates.length - nuevos.length
+    // 4. Leads que YA existen en la campaña (con su estado, para decidir qué hacer).
+    //    El mismo número puede existir en OTRAS campañas: es válido (cada campaña
+    //    es independiente por el unique [client_number, campaignId]).
+    const existentes = await prisma.lead.findMany({
+      where: { campaignId, client_number: { in: candidates.map((c) => c.client_number) } },
+      select: {
+        id: true,
+        client_number: true,
+        status: true,
+        sub_status: true,
+        asignadoA: { select: { name: true, first_last_name: true, second_last_name: true } },
+      },
+    })
+    const existingByNum = new Map(existentes.map((l) => [l.client_number, l]))
+    const nuevos = candidates.filter((c) => !existingByNum.has(c.client_number))
+    const existing = existentes.length
+
+    // 4b. Reingreso: si un lead ya existe pero NO está agendado ni vendido
+    //     (p.ej. NO_CONTACTO o NEGATIVO), vuelve a aparecer como NUEVO
+    //     (SIN_GESTION, sin asesor, sin reserva). Los AGENDADO/POSITIVO se respetan.
+    const reingresar = existentes.filter((l) => l.status === 'NO_CONTACTO' || l.status === 'NEGATIVO')
+    if (reingresar.length > 0) {
+      await prisma.lead.updateMany({
+        where: { id: { in: reingresar.map((l) => l.id) } },
+        // createdAt se refresca a AHORA: así el lead reingresa como nuevo y NO lo
+        // oculta el corte de recencia de 3 días (aunque el original fuera antiguo).
+        data: { status: 'SIN_GESTION', sub_status: 'OTRO', asignadoAId: null, reservedUntil: null, createdAt: new Date() },
+      })
+    }
 
 
        // 5. Insertar SOLO los nuevos, por lotes, SIN transacción interactiva. Si un
@@ -207,6 +225,41 @@ export async function syncExcelCampaign(campaignId: string ): Promise<CampaignSy
 
         const summary: CampaignSyncSummary = { totalRows, created, existing, discarded, errors, renamed }
         await markSyncOk(campaignId, summary, sheetTitle || campaign.excelSheetName || '')
+
+        // Reflejar en el Sheet (solo hojas privadas): AGENDADO/POSITIVO muestran
+        // asesor + estado en vez de solo omitirlos; los reingresados vuelven a
+        // "Sin gestión". En segundo plano: no bloquea ni rompe la sincronización.
+        if (campaign.sheetAccessMode === 'SERVICE_ACCOUNT' && campaign.excelUrl && campaign.excelGid) {
+          const url = campaign.excelUrl
+          const gid = campaign.excelGid
+          const title = sheetTitle || campaign.excelSheetName || ''
+          const reflejos = [
+            ...existentes
+              .filter((l) => l.status === 'AGENDADO' || l.status === 'POSITIVO')
+              .map((l) => ({
+                clientNumber: l.client_number,
+                asesor: l.asignadoA ? fullName(l.asignadoA) : '',
+                estado: STATUS_LABELS[l.status] ?? l.status,
+                subEstado: SUBSTATUS_LABELS[l.sub_status] ?? l.sub_status,
+              })),
+            ...reingresar.map((l) => ({
+              clientNumber: l.client_number,
+              asesor: '',
+              estado: STATUS_LABELS.SIN_GESTION,
+              subEstado: '',
+            })),
+          ]
+          void (async () => {
+            for (const e of reflejos) {
+              try {
+                await writeLeadStatusToSheet({ url, mode: 'SERVICE_ACCOUNT', gid, sheetTitle: title, ...e })
+              } catch {
+                // best-effort: el Sheet no debe afectar la sincronización
+              }
+            }
+          })()
+        }
+
         return summary
 
   } catch (e) {

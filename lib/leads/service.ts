@@ -103,7 +103,10 @@ export async function listLeads(user: AuthUser, filters: LeadFilters) {
   const extra: Prisma.LeadWhereInput = {}
   if (filters.campaignId) extra.campaignId = filters.campaignId
   if (filters.status) extra.status = requireEnum(filters.status, LEAD_STATUS, 'status')
-  else if (filters.excludeFinal) extra.status = { notIn: FINAL_STATUSES }
+  else if (filters.excludeFinal) {
+    extra.status = { notIn: FINAL_STATUSES }
+    extra.createdAt = { gte: recentCutoff() } // solo leads recientes (rendimiento)
+  }
   if (filters.asignadoA) extra.asignadoAId = filters.asignadoA
   return prisma.lead.findMany({
     where: { AND: [getLeadFilter(user), extra] },
@@ -126,6 +129,12 @@ export async function listLeads(user: AuthUser, filters: LeadFilters) {
 }
 
 const HOUR = 60 * 60 * 1000
+
+// Ventana de recencia: por rendimiento (7k+ leads) no se traen ni se reparten
+// leads con más de N días de antigüedad (createdAt). El historial y la bandeja
+// del asesor NO usan este corte.
+const RECENT_DAYS = 3
+const recentCutoff = () => new Date(Date.now() - RECENT_DAYS * 24 * HOUR)
 
 /**
  * Suelta los AGENDADO cuya reserva de 24 h ya venció (o los antiguos sin reserva):
@@ -169,6 +178,7 @@ function availableLeadWhere(campaignId: string, now: Date, allowNoContacto = fal
   return {
     campaignId,
     status: { notIn: FINAL_STATUSES },
+    createdAt: { gte: recentCutoff() }, // no repartir leads antiguos (rendimiento)
     AND: [{ OR: reservaVencida }, { OR: asignable }],
   }
 }

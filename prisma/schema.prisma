@@ -260,6 +260,9 @@ model Lead {
   @@index([status])
   @@index([campaignId])
   @@index([asignadoAId])
+  // Índices compuestos para las consultas frecuentes (pool, bandeja, listados).
+  @@index([campaignId, asignadoAId, status])
+  @@index([campaignId, createdAt])
 }
 
 // ============================================================
