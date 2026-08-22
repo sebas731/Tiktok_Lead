@@ -509,6 +509,41 @@ export async function reingresarLeadsByNumbers(user: AuthUser, input: { campaign
       createdAt: new Date(), // reingresa como nuevo (pasa el corte de recencia)
     },
   })
+
+  // Reflejar en el Sheet (solo hojas privadas, en segundo plano, best-effort):
+  // los reingresados vuelven a "Sin gestión" y se limpia el asesor.
+  const camp = await prisma.campaign.findUnique({
+    where: { campaign_id: campaignId },
+    select: { source: true, sheetAccessMode: true, excelUrl: true, excelGid: true, excelSheetName: true },
+  })
+  if (camp?.source === 'EXCEL' && camp.sheetAccessMode === 'SERVICE_ACCOUNT' && camp.excelUrl && camp.excelGid && ids.length > 0) {
+    const url = camp.excelUrl
+    const gid = camp.excelGid
+    const title = camp.excelSheetName
+    const reset = await prisma.lead.findMany({
+      where: { id: { in: ids }, status: LEAD_STATUS.SIN_GESTION },
+      select: { client_number: true },
+    })
+    void (async () => {
+      for (const l of reset) {
+        try {
+          await writeLeadStatusToSheet({
+            url,
+            mode: 'SERVICE_ACCOUNT',
+            gid,
+            sheetTitle: title,
+            clientNumber: l.client_number,
+            estado: STATUS_LABELS.SIN_GESTION,
+            subEstado: '',
+            asesor: '',
+          })
+        } catch {
+          // best-effort: el Sheet no debe afectar el reingreso
+        }
+      }
+    })()
+  }
+
   return { reingresados: res.count, pedidos: nums.length }
 }
 
